@@ -69,3 +69,6 @@ $RECYCLE.BIN/
 
 # ---------- 其他临时/个人文件 ----------
 .trae/documents/
+
+# ---------- 本地私有配置（密钥 / 密码 / 真实地址）----------
+application-local.yml

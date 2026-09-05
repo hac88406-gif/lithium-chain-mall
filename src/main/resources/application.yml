@@ -89,3 +89,10 @@ logging:
   level:
     com.greenchain: debug
     org.springframework.security: info
+
+
+# ---------- 本地私有覆盖配置 ----------
+# Spring Boot 启动时自动尝试加载 application-local.yml
+# 找不到时安静跳过，不会报错（optional: 前缀）
+# 所有真实密钥/密码写在 application-local.yml 里，它已被 .gitignore 排除
+spring.config.import: optional:file:application-local.yml
