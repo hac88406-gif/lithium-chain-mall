@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.greenchain.mapper.CartItemMapper">
+    <select id="findByUserId" resultType="com.greenchain.entity.CartItem">
+        SELECT * FROM cart_item WHERE user_id = #{userId} ORDER BY create_time DESC
+    </select>
+    <!-- 查询购物车列表，关联 product 表过滤掉已下架商品（status=0），仅前端不展示，cart_item 记录保留 -->
+    <select id="findByUserIdOnShelf" resultType="com.greenchain.entity.CartItem">
+        SELECT ci.* FROM cart_item ci
+        INNER JOIN product p ON ci.product_id = p.id
+        WHERE ci.user_id = #{userId} AND p.status = 1
+        ORDER BY ci.create_time DESC
+    </select>
+    <select id="findByUserIdAndProductId" resultType="com.greenchain.entity.CartItem">
+        SELECT * FROM cart_item WHERE user_id = #{userId} AND product_id = #{productId}
+    </select>
+</mapper>

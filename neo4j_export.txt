@@ -1,0 +1,84 @@
+﻿ProcessNode | P001 | åæé¢å¤ç | NEXT_STEP | ProcessNode | P002 | æ¶å¸
+ProcessNode | P002 | æ¶å¸ | NEXT_STEP | ProcessNode | P003 | è¾å
+ProcessNode | P002 | æ¶å¸ | USES | Equipment | E001 | é«éåé¢æ¶å¸æº CL-03
+ProcessNode | P002 | æ¶å¸ | USES | Equipment | E002 | ç­ç¼æ¤åæ¶å¸æº CL-05
+ProcessNode | P002 | æ¶å¸ | USES | Equipment | E003 | X-Ray é¢å¯åº¦æ£æµä»ª QC-01
+ProcessNode | P002 | æ¶å¸ | HAS_RISK | QualityRisk | R001 | æçååº¦åå·®
+ProcessNode | P002 | æ¶å¸ | HAS_RISK | QualityRisk | R002 | æµæå¢èé¢ç²
+ProcessNode | P003 | è¾å | NEXT_STEP | ProcessNode | P004 | åå
+ProcessNode | P004 | åå | NEXT_STEP | ProcessNode | P005 | å·ç»
+ProcessNode | P004 | åå | USES | Equipment | E003 | X-Ray é¢å¯åº¦æ£æµä»ª QC-01
+ProcessNode | P005 | å·ç» | NEXT_STEP | ProcessNode | P006 | å¥å£³
+ProcessNode | P005 | å·ç» | USES | Equipment | E004 | é«éå·ç»æº W-12
+ProcessNode | P005 | å·ç» | HAS_RISK | QualityRisk | R003 | å·ç»å¯¹é½åº¦è¶å·®
+ProcessNode | P006 | å¥å£³ | NEXT_STEP | ProcessNode | P007 | æ³¨æ¶²
+ProcessNode | P007 | æ³¨æ¶² | NEXT_STEP | ProcessNode | P008 | åæ
+ProcessNode | P007 | æ³¨æ¶² | USES | Equipment | E005 | å¨èªå¨æ³¨æ¶²æº INJ-07
+ProcessNode | P007 | æ³¨æ¶² | HAS_RISK | QualityRisk | R004 | çµè§£æ¶²æ³¨æ¶²éåå·®
+ProcessNode | P008 | åæ | NEXT_STEP | ProcessNode | P009 | åå®¹
+ProcessNode | P008 | åæ | USES | Equipment | E006 | åæåæ¾çµæ FC-30
+ProcessNode | P008 | åæ | HAS_RISK | QualityRisk | R005 | SEIèå½¢æå¼å¸¸
+ProcessNode | P009 | åå®¹ | NEXT_STEP | ProcessNode | P010 | çæ¥
+ProcessNode | P009 | åå®¹ | USES | Equipment | E006 | åæåæ¾çµæ FC-30
+ProcessNode | P009 | åå®¹ | HAS_RISK | QualityRisk | R007 | å®¹éä¸è´æ§å·®
+ProcessNode | P010 | çæ¥ | NEXT_STEP | ProcessNode | P011 | æ¨¡ç»ç»è£
+ProcessNode | P010 | çæ¥ | USES | Equipment | E007 | æ¿åçæ¥å·¥ä½ç« LW-02
+ProcessNode | P010 | çæ¥ | HAS_RISK | QualityRisk | R006 | çæ¥èç/åç
+ProcessNode | P011 | æ¨¡ç»ç»è£ | NEXT_STEP | ProcessNode | P012 | çµæ± åå°è£
+ProcessNode | P011 | æ¨¡ç»ç»è£ | USES | Equipment | E007 | æ¿åçæ¥å·¥ä½ç« LW-02
+ProcessNode | P012 | çµæ± åå°è£ | NEXT_STEP | ProcessNode | P013 | æ§è½æ£æµ
+ProcessNode | P013 | æ§è½æ£æµ | NEXT_STEP | ProcessNode | P014 | åºåæ£éª
+ProcessNode | P013 | æ§è½æ£æµ | USES | Equipment | E008 | PACK ç»æ£æµè¯å° EOL-05
+ProcessNode | P014 | åºåæ£éª | USES | Equipment | E008 | PACK ç»æ£æµè¯å° EOL-05
+QualityRisk | R001 | æçååº¦åå·® | LEADS_TO | Defect | D002 | åé»è¶æ 
+QualityRisk | R001 | æçååº¦åå·® | LEADS_TO | Defect | D004 | å¾ªç¯å¯¿å½è¡°åå¿«
+QualityRisk | R002 | æµæå¢èé¢ç² | LEADS_TO | Defect | D001 | å®¹éä¸è¶³
+QualityRisk | R003 | å·ç»å¯¹é½åº¦è¶å·® | LEADS_TO | Defect | D006 | å±é¨å¾®ç­è·¯
+QualityRisk | R004 | çµè§£æ¶²æ³¨æ¶²éåå·® | LEADS_TO | Defect | D001 | å®¹éä¸è¶³
+QualityRisk | R004 | çµè§£æ¶²æ³¨æ¶²éåå·® | LEADS_TO | Defect | D003 | èªæ¾çµåå¤§
+QualityRisk | R005 | SEIèå½¢æå¼å¸¸ | LEADS_TO | Defect | D003 | èªæ¾çµåå¤§
+QualityRisk | R005 | SEIèå½¢æå¼å¸¸ | LEADS_TO | Defect | D004 | å¾ªç¯å¯¿å½è¡°åå¿«
+QualityRisk | R006 | çæ¥èç/åç | LEADS_TO | Defect | D002 | åé»è¶æ 
+QualityRisk | R006 | çæ¥èç/åç | LEADS_TO | Defect | D005 | é¼å£³/åå½¢
+QualityRisk | R007 | å®¹éä¸è´æ§å·® | LEADS_TO | Defect | D001 | å®¹éä¸è¶³
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P001 | åæé¢å¤ç
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P002 | æ¶å¸
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P003 | è¾å
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P004 | åå
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P005 | å·ç»
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P006 | å¥å£³
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P007 | æ³¨æ¶²
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P008 | åæ
+Product | PRD001 | 21700åæ±çµè¯ | CONTAINS | ProcessNode | P009 | åå®¹
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P001 | åæé¢å¤ç
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P002 | æ¶å¸
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P003 | è¾å
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P004 | åå
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P005 | å·ç»
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P006 | å¥å£³
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P007 | æ³¨æ¶²
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P008 | åæ
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P009 | åå®¹
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P010 | çæ¥
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P011 | æ¨¡ç»ç»è£
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P012 | çµæ± åå°è£
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P013 | æ§è½æ£æµ
+Product | PRD002 | å®¶ç¨å¨è½PACK 10kWh | CONTAINS | ProcessNode | P014 | åºåæ£éª
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P001 | åæé¢å¤ç
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P002 | æ¶å¸
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P003 | è¾å
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P004 | åå
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P005 | å·ç»
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P006 | å¥å£³
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P007 | æ³¨æ¶²
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P008 | åæ
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P009 | åå®¹
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P010 | çæ¥
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P012 | çµæ± åå°è£
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P013 | æ§è½æ£æµ
+Product | PRD003 | å¨åçµæ± å NCM 62kWh | CONTAINS | ProcessNode | P014 | åºåæ£éª
+Product | PRD004 | ä¾¿æºå¨è½çµæºï¼å¤è´­çµè¯ï¼ | CONTAINS | ProcessNode | P010 | çæ¥
+Product | PRD004 | ä¾¿æºå¨è½çµæºï¼å¤è´­çµè¯ï¼ | CONTAINS | ProcessNode | P011 | æ¨¡ç»ç»è£
+Product | PRD004 | ä¾¿æºå¨è½çµæºï¼å¤è´­çµè¯ï¼ | CONTAINS | ProcessNode | P012 | çµæ± åå°è£
+Product | PRD004 | ä¾¿æºå¨è½çµæºï¼å¤è´­çµè¯ï¼ | CONTAINS | ProcessNode | P013 | æ§è½æ£æµ
+Product | PRD004 | ä¾¿æºå¨è½çµæºï¼å¤è´­çµè¯ï¼ | CONTAINS | ProcessNode | P014 | åºåæ£éª

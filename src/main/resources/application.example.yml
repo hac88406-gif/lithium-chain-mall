@@ -1,0 +1,89 @@
+# ============================================================================
+# 绿链锂电采购平台 —— Spring Boot 配置模板（application.example.yml）
+# ----------------------------------------------------------------------------
+# 使用方式：
+#   1) 将本文件复制为 application.yml，或
+#   2) 通过环境变量 / IDEA VM Options / docker-compose environment 注入即可
+#
+# 所有占位符均支持 环境变量:默认值 的形式（Spring Boot 标准语法）。
+# ============================================================================
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: green-chain-procurement
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/green_chain?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:your-mysql-password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:your-neo4j-password}
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DATABASE:0}
+    timeout: 3000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: -1ms
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+# Knife4j 接口文档：http://localhost:8080/doc.html
+knife4j:
+  enable: true
+
+# 订单超时关单 & 工单清理
+order:
+  timeout:
+    minutes: 30
+  cancel:
+    cron: "0 */5 * * * ?"
+
+# Dify AI 智能客服
+#  线上申请：https://dify.ai   本地部署：https://github.com/langgenius/dify
+dify:
+  base-url: ${DIFY_BASE_URL:http://localhost:8088/v1}
+  api-key: ${DIFY_API_KEY:app-xxxxxxxxxxxxxxxxxxxxxxxx}   # TODO: 替换为你自己的 Dify App Key
+  timeout-seconds: 60
+
+# Mock 支付网关（本地演示用，生产切换为微信/支付宝实现）
+greenchain:
+  payment:
+    default-channel: mock
+    mock:
+      secret-key: ${PAYMENT_MOCK_SECRET:please-change-this-secret}
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.greenchain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# MinIO 对象存储（本地磁盘上传模式下可忽略）
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  accessKey: ${MINIO_ACCESS_KEY:your-minio-access-key}
+  secretKey: ${MINIO_SECRET_KEY:your-minio-secret-key}
+  bucket: ${MINIO_BUCKET:green-chain-files}
+
+logging:
+  level:
+    com.greenchain: debug
+    org.springframework.security: info

@@ -1,0 +1,14 @@
+# Docker 构建时忽略的文件（减小 build context 体积，加速构建）
+.idea/
+.vscode/
+.git/
+target/
+frontend/node_modules/
+frontend/dist/
+*.log
+*.iml
+*.sql.backup
+dump.rdb
+hs_err_pid*.log
+replay_pid*.log
+.DS_Store

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.greenchain.mapper.OrderMapper">
+    <select id="findByUserId" resultType="com.greenchain.entity.Order">
+        SELECT * FROM `order` WHERE user_id = #{userId} ORDER BY create_time DESC
+    </select>
+
+    <!-- ==================== 仪表盘统计 SQL（批次 2） ==================== -->
+
+    <!-- 统计时间段内创建的订单数（不看状态，纯 COUNT） -->
+    <select id="countCreatedBetween" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM `order`
+        WHERE create_time BETWEEN #{start} AND #{end}
+    </select>
+
+    <!-- 统计时间段内有效成交（paid/completed）的实付总额，COALESCE 兜底 0 防止前端拿到 null -->
+    <select id="sumPaidAmountBetween" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM `order`
+        WHERE status IN ('paid', 'completed')
+          AND create_time BETWEEN #{start} AND #{end}
+    </select>
+
+    <!-- 按状态统计订单数 -->
+    <select id="countByStatus" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM `order`
+        WHERE status = #{status}
+    </select>
+
+    <!-- 按天统计订单量与销售额（近 7 天趋势），别名驼峰对齐前端 ECharts 字段 -->
+    <!-- NOTE：GROUP BY 与 SELECT 的 DATE_FORMAT 表达式必须完全一致，避免 MySQL 8 only_full_group_by 报错 -->
+    <select id="statDailyOrderCountAndAmount" resultType="java.util.Map">
+        SELECT DATE_FORMAT(create_time, '%Y-%m-%d')    AS `date`,
+               COUNT(1)                                AS `orderCount`,
+               COALESCE(SUM(CASE WHEN status IN ('paid','completed') THEN total_amount ELSE 0 END), 0) AS `amount`
+        FROM `order`
+        WHERE create_time BETWEEN #{start} AND #{end}
+        GROUP BY DATE_FORMAT(create_time, '%Y-%m-%d')
+        ORDER BY 1 ASC
+    </select>
+
+    <!-- 订单状态分布（饼图），value 键对齐 ECharts data 格式 -->
+    <select id="statStatusDistribution" resultType="java.util.Map">
+        SELECT status                         AS `status`,
+               COUNT(1)                       AS `value`
+        FROM `order`
+        GROUP BY status
+    </select>
+
+    <!-- 省份订单量分布（JOIN user_address 取省份，未知省份兜底），LIMIT 15 防止省份过多 -->
+    <select id="statProvinceOrderCount" resultType="java.util.Map">
+        SELECT COALESCE(a.province, '未知')    AS `province`,
+               COUNT(DISTINCT o.id)           AS `orderCount`,
+               COALESCE(SUM(CASE WHEN o.status IN ('paid','completed') THEN o.total_amount ELSE 0 END), 0) AS `amount`
+        FROM `order` o
+        LEFT JOIN user_address a ON o.address_id = a.id
+        GROUP BY a.province
+        ORDER BY `orderCount` DESC
+        LIMIT 15
+    </select>
+</mapper>

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    BenchmarkMapper：Neo4j vs MySQL 压测专用
+    公平对比：与 Neo4j Cypher 图查询语义完全等价的 MySQL 多表 JOIN
+-->
+<mapper namespace="com.greenchain.mapper.BenchmarkMapper">
+
+    <!-- ============================================================
+         场景①：单产品 4 跳浅遍历（原压测场景，MySQL 占优）
+         7 表 LEFT JOIN + GROUP BY + GROUP_CONCAT DISTINCT
+         对应 Cypher：4 跳 OPTIONAL MATCH + collect(DISTINCT)
+         ============================================================ -->
+    <select id="queryProductProcessFullChain" resultType="map">
+        SELECT
+            p.id            AS pid,
+            p.name          AS pname,
+            p.workshop      AS workshop,
+            p.duration      AS duration,
+            GROUP_CONCAT(DISTINCT e.name ORDER BY e.name)  AS equipment,
+            GROUP_CONCAT(DISTINCT q.name ORDER BY q.name)  AS risks,
+            GROUP_CONCAT(DISTINCT d.name ORDER BY d.name)  AS defects
+        FROM product_process pp
+            JOIN process_node p
+                ON pp.process_id = p.id
+            LEFT JOIN process_equipment pe
+                ON p.id = pe.process_id
+            LEFT JOIN equipment e
+                ON pe.equipment_id = e.id
+            LEFT JOIN process_risk pr
+                ON p.id = pr.process_id
+            LEFT JOIN quality_risk q
+                ON pr.risk_id = q.id
+            LEFT JOIN risk_defect rd
+                ON q.id = rd.risk_id
+            LEFT JOIN defect d
+                ON rd.defect_id = d.id
+        WHERE pp.product_id = #{productId}
+        GROUP BY p.id, p.name, p.workshop, p.duration
+        ORDER BY p.id
+    </select>
+
+    <!-- ============================================================
+         场景②：100 产品批量 4 跳遍历（category='benchmark'，两边行数对等）
+         ============================================================ -->
+    <select id="queryMultiProductsFullChain" resultType="map">
+        SELECT
+            gp.id           AS product_id,
+            gp.name         AS product_name,
+            p.id            AS pid,
+            p.name          AS pname,
+            p.workshop      AS workshop,
+            p.duration      AS duration,
+            GROUP_CONCAT(DISTINCT e.name ORDER BY e.name)  AS equipment,
+            GROUP_CONCAT(DISTINCT q.name ORDER BY q.name)  AS risks,
+            GROUP_CONCAT(DISTINCT d.name ORDER BY d.name)  AS defects
+        FROM graph_product gp
+            JOIN product_process pp
+                ON gp.id = pp.product_id
+            JOIN process_node p
+                ON pp.process_id = p.id
+            LEFT JOIN process_equipment pe
+                ON p.id = pe.process_id
+            LEFT JOIN equipment e
+                ON pe.equipment_id = e.id
+            LEFT JOIN process_risk pr
+                ON p.id = pr.process_id
+            LEFT JOIN quality_risk q
+                ON pr.risk_id = q.id
+            LEFT JOIN risk_defect rd
+                ON q.id = rd.risk_id
+            LEFT JOIN defect d
+                ON rd.defect_id = d.id
+        WHERE gp.id IN
+        <foreach collection="productIds" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+        AND gp.category = 'benchmark'
+        GROUP BY gp.id, gp.name, p.id, p.name, p.workshop, p.duration
+        ORDER BY gp.id, p.id
+    </select>
+
+    <!-- ============================================================
+         场景③：深度递归遍历（MySQL 必须用递归 CTE）
+         从 P001 出发递归遍历 NEXT_STEP 到 P014，再叠加设备/风险/缺陷
+         对应 Cypher：MATCH (start {id: $pid})-[:NEXT_STEP*]->(p) ...
+         ============================================================ -->
+    <select id="queryDeepProcessTraversal" resultType="map">
+        WITH RECURSIVE process_chain AS (
+            -- 锚点：起始工序
+            SELECT p.id, p.name, p.workshop, p.duration,
+                   0 AS depth
+            FROM process_node p
+            WHERE p.id = #{processId}
+
+            UNION ALL
+
+            -- 递归：沿 NEXT_STEP 继续往下走
+            SELECT pn.id, pn.name, pn.workshop, pn.duration,
+                   pc.depth + 1
+            FROM process_chain pc
+            JOIN process_next_step pns
+                ON pc.id = pns.from_id
+            JOIN process_node pn
+                ON pns.to_id = pn.id
+            WHERE pc.depth &lt; 20  -- 安全上限，防无限递归
+        )
+        SELECT
+            pc.id           AS pid,
+            pc.name         AS pname,
+            pc.workshop     AS workshop,
+            pc.duration     AS duration,
+            pc.depth        AS depth,
+            GROUP_CONCAT(DISTINCT e.name ORDER BY e.name)  AS equipment,
+            GROUP_CONCAT(DISTINCT q.name ORDER BY q.name)  AS risks,
+            GROUP_CONCAT(DISTINCT d.name ORDER BY d.name)  AS defects
+        FROM process_chain pc
+            LEFT JOIN process_equipment pe
+                ON pc.id = pe.process_id
+            LEFT JOIN equipment e
+                ON pe.equipment_id = e.id
+            LEFT JOIN process_risk pr
+                ON pc.id = pr.process_id
+            LEFT JOIN quality_risk q
+                ON pr.risk_id = q.id
+            LEFT JOIN risk_defect rd
+                ON q.id = rd.risk_id
+            LEFT JOIN defect d
+                ON rd.defect_id = d.id
+        GROUP BY pc.id, pc.name, pc.workshop, pc.duration, pc.depth
+        ORDER BY pc.depth, pc.id
+    </select>
+
+    <!-- ============================================================
+         场景④：全量 benchmark 产品无过滤 4 跳遍历（重头戏）
+         MySQL 8 表 JOIN 扫 3000+ benchmark 产品 × 42000 行 product_process
+         Neo4j 原生图扫 4000 Product × 56000 CONTAINS
+         ============================================================ -->
+    <select id="queryAllProductsFullChain" resultType="map">
+        SELECT
+            gp.id           AS product_id,
+            gp.name         AS product_name,
+            p.id            AS pid,
+            p.name          AS pname,
+            p.workshop      AS workshop,
+            p.duration      AS duration,
+            GROUP_CONCAT(DISTINCT e.name ORDER BY e.name)  AS equipment,
+            GROUP_CONCAT(DISTINCT q.name ORDER BY q.name)  AS risks,
+            GROUP_CONCAT(DISTINCT d.name ORDER BY d.name)  AS defects
+        FROM graph_product gp
+            JOIN product_process pp
+                ON gp.id = pp.product_id
+            JOIN process_node p
+                ON pp.process_id = p.id
+            LEFT JOIN process_equipment pe
+                ON p.id = pe.process_id
+            LEFT JOIN equipment e
+                ON pe.equipment_id = e.id
+            LEFT JOIN process_risk pr
+                ON p.id = pr.process_id
+            LEFT JOIN quality_risk q
+                ON pr.risk_id = q.id
+            LEFT JOIN risk_defect rd
+                ON q.id = rd.risk_id
+            LEFT JOIN defect d
+                ON rd.defect_id = d.id
+        WHERE gp.category = 'benchmark'
+        GROUP BY gp.id, gp.name, p.id, p.name, p.workshop, p.duration
+        ORDER BY gp.id, p.id
+    </select>
+
+</mapper>

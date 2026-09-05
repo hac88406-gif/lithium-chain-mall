@@ -1,0 +1,91 @@
+﻿server:
+  port: 8080
+
+# ===== JWT 配置（P1-2 修复：密钥和过期时间可从环境变量覆盖） =====
+# 生产环境请务必通过环境变量 JWT_SECRET 设置为强随机字符串，长度至少 32 字符
+jwt:
+  secret: ${JWT_SECRET:green-chain-procurement-secret-key-2024-please-change-it-later}
+  expiration: ${JWT_EXPIRATION:86400000}   # 24 小时（毫秒）
+
+spring:
+  application:
+    name: green-chain-procurement
+  datasource:
+    # 支持环境变量覆盖：DB_URL / DB_USERNAME / DB_PASSWORD
+    url: ${DB_URL:jdbc:mysql://localhost:3306/green_chain?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:12345678}
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}            # 无密码留空即可
+    database: ${REDIS_DATABASE:0}
+    timeout: 3000ms
+    lettuce:
+      pool:
+        max-active: 8    # 连接池最大连接数
+        max-idle: 8      # 最大空闲连接数
+        min-idle: 0      # 最小空闲连接数
+        max-wait: -1ms   # 获取连接最大等待时间（负值表示不限制）
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  mvc:
+    pathmatch:
+      # springfox(swagger2) 在 SpringBoot 2.6+ 必须使用 ant 风格路径匹配，否则启动报 NPE
+      matching-strategy: ant_path_matcher
+
+# Knife4j 接口文档：启动后访问 http://localhost:8080/doc.html
+knife4j:
+  enable: true
+
+# 订单超时自动关单 + 定时任务配置（默认 30 分钟超时，每 5 分钟轮询一次）
+order:
+  timeout:
+    minutes: 30
+  cancel:
+    cron: "0 */5 * * * ?"
+
+# Dify AI 智能客服配置（双轨模型：deepseek 云端 + Ollama 本地降级）
+#  本地 Docker 部署的 Dify（localhost:8088）App Key 已配置为默认值；
+#  如更换 Dify 实例，请通过环境变量 DIFY_API_KEY 覆盖
+dify:
+  base-url: ${DIFY_BASE_URL:http://localhost:8088/v1}
+  api-key: ${DIFY_API_KEY}
+  timeout-seconds: 60
+
+# ===== 支付配置（Mock 支付网关 + 策略模式，可扩展微信/支付宝） =====
+# default-channel 与某个 PaymentChannel 实现的 channel() 一致即可切换通道；
+# 未来接微信/支付宝只需新增实现并改这里，业务层无需改动。
+greenchain:
+  payment:
+    default-channel: mock
+    mock:
+      secret-key: ${PAYMENT_MOCK_SECRET:greenchain-mock-secret-for-local-demo}
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.greenchain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# MinIO 对象存储配置（与 docker-compose 启动的本地 MinIO 实例对齐）
+#  生产环境请务必更换强密码；本地磁盘上传模式可不启动 MinIO
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  accessKey: ${MINIO_ACCESS_KEY:minioadmin}
+  secretKey: ${MINIO_SECRET_KEY:minioadmin}
+  bucket: ${MINIO_BUCKET:green-chain-files}
+
+logging:
+  level:
+    com.greenchain: debug
+    org.springframework.security: info
