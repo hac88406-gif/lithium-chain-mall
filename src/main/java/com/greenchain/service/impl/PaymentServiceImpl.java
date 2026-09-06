@@ -6,7 +6,6 @@ import com.greenchain.dto.response.PaymentVO;
 import com.greenchain.entity.Order;
 import com.greenchain.entity.OrderItem;
 import com.greenchain.entity.PaymentTransaction;
-import com.greenchain.entity.Product;
 import com.greenchain.mapper.OrderItemMapper;
 import com.greenchain.mapper.OrderMapper;
 import com.greenchain.mapper.PaymentTransactionMapper;
@@ -253,17 +252,14 @@ public class PaymentServiceImpl implements PaymentService {
         }
         List<OrderItem> items = orderItemMapper.findByOrderId(order.getId());
         for (OrderItem item : items) {
-            Product product = productMapper.selectById(item.getProductId());
-            if (product != null) {
-                product.setSales((product.getSales() != null ? product.getSales() : 0) + item.getQuantity());
-                product.setUpdateTime(LocalDateTime.now());
-                productMapper.updateById(product);
-                // 热销榜销量实时累加（原子，失败不阻断主流程）
-                try {
-                    cacheUtil.zIncrementScore(RANK_KEY_PRODUCT_SALES, item.getProductId(), item.getQuantity());
-                } catch (Exception e) {
-                    log.warn("热销榜销量累加失败（不影响主流程）：productId={}, err={}", item.getProductId(), e.getMessage());
-                }
+            // 原子累加销量：替换原先 selectById → setSales → updateById 的读改写，
+            // 避免并发支付回调时多次累加互相覆盖导致销量少算。
+            productMapper.addSales(item.getProductId(), item.getQuantity());
+            // 热销榜销量实时累加（原子，失败不阻断主流程）
+            try {
+                cacheUtil.zIncrementScore(RANK_KEY_PRODUCT_SALES, item.getProductId(), item.getQuantity());
+            } catch (Exception e) {
+                log.warn("热销榜销量累加失败（不影响主流程）：productId={}, err={}", item.getProductId(), e.getMessage());
             }
         }
     }

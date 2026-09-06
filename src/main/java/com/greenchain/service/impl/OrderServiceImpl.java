@@ -52,7 +52,7 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(400, "请选择要结算的商品");
         }
 
-        // 查询所有购物车项
+        // 查询所有购物车项（仅做归属校验 + 金额计算，不再做"SELECT stock"这种并发不安全的预判）
         List<Cart> cartList = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
@@ -63,16 +63,25 @@ public class OrderServiceImpl implements OrderService {
             }
             cartList.add(cart);
 
-            // 计算金额
             Product product = productMapper.selectById(cart.getProductId());
             if (product == null) {
                 throw new BusinessException(400, "商品不存在");
             }
-            // 校验库存
-            if (product.getStock() < cart.getQuantity()) {
-                throw new BusinessException(400, "商品[" + product.getName() + "]库存不足");
-            }
             totalAmount = totalAmount.add(product.getPrice().multiply(new BigDecimal(cart.getQuantity())));
+        }
+
+        // ===== 防超卖：原子条件扣库存 =====
+        // 替换旧写法（SELECT stock → setStock → updateById 读改写），
+        // 改用 ProductMapper.deductStock：单条 SQL 条件 UPDATE，stock>=quantity 才扣，
+        // 返回 0 说明扣减失败（并发下已被别人抢光或库存不足），直接抛异常让 @Transactional 回滚。
+        // 先扣库存再插订单：一旦某个商品扣减失败，前面已经扣掉的库存也会随事务回滚自动还原。
+        for (Cart cart : cartList) {
+            int rows = productMapper.deductStock(cart.getProductId(), cart.getQuantity());
+            if (rows == 0) {
+                Product p = productMapper.selectById(cart.getProductId());
+                String name = p != null ? p.getName() : "商品#" + cart.getProductId();
+                throw new BusinessException(400, "商品[" + name + "]库存不足，请稍后再试");
+            }
         }
 
         // 创建订单（小写状态值，与 ClientOrderController 统一）
@@ -84,7 +93,7 @@ public class OrderServiceImpl implements OrderService {
         order.setRemark(request.getRemark());
         orderMapper.insert(order);
 
-        // 创建订单明细
+        // 创建订单明细（不再做库存扣减，已在上面一次性原子扣完）
         for (Cart cart : cartList) {
             Product product = productMapper.selectById(cart.getProductId());
             OrderItem item = new OrderItem();
@@ -94,10 +103,6 @@ public class OrderServiceImpl implements OrderService {
             item.setPrice(product.getPrice());
             item.setQuantity(cart.getQuantity());
             orderItemMapper.insert(item);
-
-            // 扣减库存
-            product.setStock(product.getStock() - cart.getQuantity());
-            productMapper.updateById(product);
         }
 
         // 删除已结算的购物车项
