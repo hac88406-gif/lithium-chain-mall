@@ -13,7 +13,7 @@
 <h1 align="center">🔋 绿链锂电 · 全链路采购商城与数字化智能制造平台</h1>
 
 <p align="center">
-  <b>面向锂电新能源行业的 B2B2C 一体化平台：买家端商城 + 销售运营后台 + 超级管理员后台 + 数字孪生工艺图谱大屏</b>
+  <b>面向锂电新能源行业的 B2B2C 一体化平台：买家端商城 + 销售运营后台 + RBAC 权限审计 + 数字孪生工艺图谱大屏</b>
 </p>
 
 <p align="center">
@@ -51,14 +51,14 @@
 
 ## 📦 功能模块
 
-### 🛒 买家端（17 个页面）
+### 🛒 买家端（16 个页面）
 | 模块 | 页面 |
 |------|------|
 | 首页与内容 | 首页、关于我们、联系我们、商务合作、合作介绍、新闻资讯、下载页 |
 | 商品中心 | 商品列表、商品详情（SKU 库存校验、缺货提示、实时库存上限）、工艺图谱（数字孪生） |
 | 交易流程 | 购物车（游客+登录双模式）、结算下单、订单中心（5 种状态生命周期按钮） |
 | 售后客服 | 售后申请（9 图凭证上传）、智能客服（Dify SSE 流 + FAQ 降级）、工单系统 |
-| 个人中心 | 我的足迹、我的应用、个人信息管理 |
+| 个人中心 | 我的足迹、我的应用 |
 
 ### 📈 销售运营后台（15 个页面 + 1 数据大屏）
 | 模块 | 页面 |
@@ -69,11 +69,12 @@
 | 运营管理 | 商务合作审核、价格报价单、新闻管理、工单管理、供应商管理、车间管理 |
 | 个人 | 系统设置、个人中心 |
 
-### 🔐 系统超级管理员后台
-| 模块 | 页面 |
+### 🔐 权限与审计（RBAC，后端已实现）
+| 模块 | 说明 |
 |------|------|
-| 权限体系 | 管理员管理、角色管理（权限树分配）、操作审计日志 |
-| 全局 | 站点设置、系统参数 |
+| 数据模型 | `SysAdmin / SysRole / SysRolePermission / SysPermission` 权限表 + `SysOperLog` 审计表（含种子数据） |
+| 后端链路 | 三拦截器有序串联：AdminAuth 鉴权（JWT + 禁用校验 + ThreadLocal）→ Permission 细粒度鉴权（`@RequiresPermission`）→ AdminAudit 操作审计（异步落库、失败降级） |
+| 前端 | 管理员与销售运营共用 `/admin/login` 登录，按角色跳转运营后台；角色/权限管理页面为后续规划 |
 
 ---
 
@@ -89,7 +90,7 @@
 | 图数据库 | Neo4j（Spring Data Neo4j / Bolt Driver） | 4.x / 5.x |
 | 对象存储 | MinIO | Latest |
 | 认证授权 | JWT（双 Token 体系：买家 + 管理员） | - |
-| API 文档 | Knife4j (Swagger 2) | 4.x |
+| API 文档 | Knife4j (Swagger 2) | 3.0.3 |
 | 安全框架 | Spring Security（permitAll，自定义 HandlerInterceptor 鉴权） | - |
 | 支付 | 策略模式 PaymentChannel + 幂等流水表 + HMAC-SHA256 签名验签 | - |
 
@@ -107,8 +108,8 @@
 | 能力 | 实现 |
 |------|------|
 | 智能客服主链路 | Dify Agent App — SSE streaming（`event: agent_message` 解析） |
-| 云端 LLM | deepseek-v3（Dify 接入） |
-| 本地 LLM | Ollama + qwen2.5:7b（Dify 双轨模型） |
+| 云端 LLM | deepseek-chat（Dify 接入） |
+| 本地 LLM | Ollama + qwen2.5:3b（Dify 双轨模型） |
 | 降级兜底 | 本地 FAQ 关键词匹配（优先级：售后 > 联系方式 > 发货 > 产品 > 支付 > 默认） |
 
 ### DevOps
@@ -148,7 +149,7 @@
           │                │
 ┌─────────▼────────────────▼───────┐  ┌────────────────────────────┐
 │         MySQL 8.0  (3306)        │  │  Redis 6/7  (6379)          │
-│  29 张业务表 / 订单 / 支付流水    │  │  购物车 / 幂等令牌 / 缓存   │
+│  23 张业务表 / 订单 / 支付流水    │  │  购物车 / 幂等令牌 / 缓存   │
 └──────────────────────────────────┘  └────────────────────────────┘
 ┌──────────────────────────────────┐  ┌────────────────────────────┐
 │        Neo4j  (7474 / 7687)      │  │  MinIO  (9000 / 9001)       │
@@ -184,8 +185,9 @@ docker-compose ps
 # 5. 访问
 #    买家端商城:       http://localhost
 #    后端接口文档:     http://localhost:8080/doc.html
-#    运营/超管后台:    http://localhost/#/sale-admin  或  /#/sys-admin
-#    全屏数据大屏:     http://localhost/#/admin/screen
+#    管理后台登录:     http://localhost/#/admin/login（超管/运营共用入口，按角色跳转）
+#    销售运营后台:     http://localhost/#/sale-admin
+#    全屏数据大屏:     http://localhost/#/sale-admin/screen
 ```
 
 ### 方式二：本地分步开发启动
@@ -203,11 +205,10 @@ docker-compose ps
 
 ```bash
 # ========== 1. 初始化数据库 ==========
-# MySQL: 依次执行
+# MySQL: schema.sql 为完整单文件版（自动建库 green_chain + 23 张表 + 权限表及种子数据）
 mysql -uroot -p < src/main/resources/schema.sql
-mysql -uroot -p green_chain < src/main/resources/schema-permission.sql
 mysql -uroot -p green_chain < src/main/resources/sql/product_seed.sql
-mysql -uroot -p green_chain < src/main/resources/sql/demo_init.sql   # 100w+ 演示数据（可选）
+mysql -uroot -p green_chain < src/main/resources/sql/demo_init.sql   # 演示数据（可选）
 
 # Neo4j: Browser 执行  http://localhost:7474
 cat src/main/resources/neo4j-init.cypher | cypher-shell -u neo4j -p <your-pwd>
@@ -347,7 +348,7 @@ CozeController / DifyService
 
 ---
 
-## 🗄 数据库（29 张业务表）
+## 🗄 数据库（23 张业务表）
 
 ### 核心业务链
 ```
@@ -374,12 +375,12 @@ SysOperLog（操作审计，拦截器自动写入）
 
 | 角色 | 登录入口 | 账号 | 密码 | 权限范围 |
 |------|---------|------|------|---------|
-| 系统超管 | `/#/sys-admin` | `admin` | `admin123` | 全部功能 + RBAC 配置 + 审计日志 |
-| 销售运营 | `/#/sale-admin` | `operator` | `op123456` | 商品/订单/售后/运营（不含用户权限分配） |
+| 系统超管 | `/#/admin/login` | `admin` | `admin123` | 全部功能 + RBAC 数据模型 + 审计日志（拦截器自动记录） |
+| 销售运营 | `/#/admin/login` | `operator` | `op123456` | 商品/订单/售后/运营（不含用户权限分配） |
 | 普通买家 | 顶部登录弹框 | `demo_buyer_001` | `123456` | 购物/下单/售后/工单 |
 | 普通买家 | 顶部登录弹框 | `demo_buyer_002` | `123456` | 同上 |
 
-> ⚠️ 演示账号密码默认写入 `src/main/resources/sql/demo_init.sql`，生产部署请务必修改！
+> ⚠️ 管理员种子账号写入 `schema.sql`（BCrypt 加密），买家演示账号写入 `src/main/resources/sql/demo_init.sql`，生产部署请务必修改！
 
 ---
 
@@ -394,7 +395,7 @@ green-chain-procurement/
 │   ├── config/              # Spring 配置：跨域/MyBatis-Plus/Redis/Knife4j/Dify/Security/WebMvc
 │   ├── controller/          # Controller 层（30+ 接口，Client / Admin 分包）
 │   ├── dto/                 # request 请求体 + response 视图对象（VO）
-│   ├── entity/              # MyBatis-Plus Entity（29 张表）
+│   ├── entity/              # MyBatis-Plus Entity（23 张表）
 │   ├── interceptor/         # 拦截器链：ClientAuth / AdminAuth / Permission / AdminAudit / 订单限流
 │   ├── mapper/              # MyBatis-Plus BaseMapper + 自定义原子 SQL 方法
 │   ├── payment/             # 支付子包：策略接口 + Mock 实现 + 签名工具 + 配置
@@ -409,8 +410,7 @@ green-chain-procurement/
 ├── src/main/resources/
 │   ├── mapper/              # MyBatis XML 自定义 SQL
 │   ├── sql/                 # SQL 脚本：demo_init / product_seed / redis
-│   ├── schema.sql           # 数据库完整建表脚本
-│   ├── schema-permission.sql# 权限表 & 种子数据
+│   ├── schema.sql           # 数据库完整建表脚本（建库 + 23 张表 + 权限表种子数据）
 │   ├── neo4j-init.cypher    # Neo4j 工艺节点 & 关系初始化
 │   ├── application.yml      # Spring Boot 主配置（环境变量占位脱敏）
 │   └── application.example.yml # 配置模板
@@ -424,8 +424,8 @@ green-chain-procurement/
 │   │   ├── router/          # Vue Router：四端路由 + 守卫
 │   │   ├── utils/           # 工具：spu SKU 转换 / 游客购物车
 │   │   ├── views/
-│   │   │   ├── admin/       # 18+ 管理页面 + DataScreen 大屏
-│   │   │   └── *.vue        # 17+ 买家端页面
+│   │   │   ├── admin/       # 18 个管理页面（含 DataScreen 大屏、Layout、Login）
+│   │   │   └── *.vue        # 16 个买家端页面
 │   │   ├── App.vue / main.js / style.css
 │   ├── public/              # 静态资源：商品图 / GLB 模型
 │   ├── Dockerfile + nginx.conf
@@ -444,10 +444,11 @@ green-chain-procurement/
 后端启动后直接访问 Knife4j：**http://localhost:8080/doc.html**
 
 接口分组：
-- 🔵 **客户端接口** `/api/client/**` — 买家端（登录、商品、购物车、下单、售后、上传）
+- 🔵 **客户端接口** `/api/client/**` — 买家端（登录、商品、购物车、订单、售后、上传）
 - 🟣 **管理端接口** `/api/admin/**` — 运营 + 超管（带 AdminAuthInterceptor + PermissionInterceptor）
-- 🟢 **支付接口** `/api/payment/**` — create / notify / simulate-pay
-- 🟡 **AI 客服** `/api/coze/**` — SSE 流式对话 + FAQ
+- 🟢 **支付接口** `/api/client/payment/**` — create / notify / {paymentNo}/simulate-pay
+- 🟡 **AI 客服** `/api/client/coze/**` — SSE 流式对话 + FAQ
+- 🟠 **工艺图谱** `/api/client/process/**` — Neo4j 工序图谱 / 风险定位 / 产品追溯
 
 ---
 
@@ -467,10 +468,10 @@ green-chain-procurement/
 
 ## 🧪 Postman 验证要点（面试官最常问）
 
-**订单主流程（按序调用）：**
-1. `POST /api/client/auth/register` 注册 → 2. `/login` 获取 token → 3. `/cart/add` 加购 → 4. `/order/create` 下单（拿 orderNo）→ 5. `/payment/create` 发起支付 → 6. `/payment/simulate-pay?orderNo=xxx` 模拟支付成功 → 7. `/client/order/detail` 验证订单状态 paid → 8. `/client/after-sale/apply` 申请售后 → 9. `/admin/after-sale/review` 运营审核 → 10. 财务对账退款
+**订单主流程（按序调用，路径与 Controller 实际 Mapping 一致）：**
+1. `POST /api/client/auth/register` 注册 → 2. `POST /api/client/auth/login` 获取 token → 3. `POST /api/client/cart` 加购 → 4. `POST /api/client/orders` 下单（拿 orderNo）→ 5. `POST /api/client/payment/create` 发起支付 → 6. `POST /api/client/payment/{paymentNo}/simulate-pay` 模拟支付成功 → 7. `GET /api/client/orders/{id}` 验证订单状态 paid → 8. `POST /api/client/afterSale/apply` 申请售后 → 9. `POST /api/admin/afterSale/review` 运营审核 → 10. 财务对账退款
 
-> 支付回调接口 `/api/payment/notify` 的签名头 `X-Signature` = `HMAC-SHA256(secretKey, body)`，可 Postman Pre-request 脚本生成。
+> 支付回调接口 `/api/client/payment/notify` 的签名头 `X-Signature` = `HMAC-SHA256(secretKey, body)`，可 Postman Pre-request 脚本生成。
 
 ---
 
