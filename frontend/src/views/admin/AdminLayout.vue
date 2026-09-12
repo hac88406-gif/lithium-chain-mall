@@ -120,6 +120,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { hasPermission } from '../../directives/permission'
 import {
   DataAnalysis, Grid, Goods, ShoppingCart, RefreshLeft,
   UserFilled, Monitor,
@@ -167,8 +168,15 @@ const saleMenuGroups = [
   }
 ]
 
-// 统一使用销售运营后台菜单
-const menuGroups = computed(() => saleMenuGroups)
+// 侧边栏菜单按当前登录角色的权限过滤：
+// - 超管（roleId=1）→ hasPermission 恒 true → 全量菜单
+// - 运营角色 → 仅显示其权限集内的菜单（如"客户档案" sys:user:list 未授予则不渲染）
+// 与路由守卫 meta.permission、后端 @RequiresPermission 三层口径一致。
+const menuGroups = computed(() =>
+  saleMenuGroups
+    .map(g => ({ ...g, items: g.items.filter(m => hasPermission(m.permission)) }))
+    .filter(g => g.items.length > 0)
+)
 
 // 侧边栏配色（和管理后台登录页统一翡翠绿，避免现在深蓝配后台表格配色打架）
 const themeClass = 'sidebar-theme-jade'

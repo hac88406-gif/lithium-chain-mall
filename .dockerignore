@@ -8,6 +8,10 @@ frontend/dist/
 *.log
 *.iml
 *.sql.backup
+
+# 本地私有配置：含真实 Dify App Key，绝不能打进镜像
+# 已被 .gitignore 忽略，但 Docker 构建读取的是文件系统而非 git 索引，需在此再挡一道
+src/main/resources/application-local.yml
 dump.rdb
 hs_err_pid*.log
 replay_pid*.log

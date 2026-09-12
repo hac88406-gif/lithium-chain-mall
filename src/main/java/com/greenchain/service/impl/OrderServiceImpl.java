@@ -11,6 +11,7 @@ import com.greenchain.dto.response.PageResult;
 import com.greenchain.entity.*;
 import com.greenchain.mapper.*;
 import com.greenchain.service.OrderService;
+import com.greenchain.util.OrderNoGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,10 +20,8 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 订单服务实现类
@@ -112,6 +111,21 @@ public class OrderServiceImpl implements OrderService {
 
         log.info("创建订单成功：{}，金额：{}", order.getOrderNo(), totalAmount);
         return convertToVO(order);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Order saveOrderWithItems(Order order, List<OrderItem> items) {
+        // 先写主表：insert 后 MyBatis-Plus 会回填自增主键，明细依赖该 id 作为外键
+        orderMapper.insert(order);
+
+        if (items != null) {
+            for (OrderItem item : items) {
+                item.setOrderId(order.getId());
+                orderItemMapper.insert(item);
+            }
+        }
+        return order;
     }
 
     @Override
@@ -264,11 +278,14 @@ public class OrderServiceImpl implements OrderService {
         return vo;
     }
 
+    /**
+     * 生成订单号：统一委托给 {@link OrderNoGenerator}，与 ClientOrderController 保持一致。
+     * <p>
+     * 原实现为 {@code "GC" + yyyyMMddHHmmss + UUID前8位}（秒级精度），
+     * 现改为毫秒级时间戳 + 6 位随机码，并发唯一性更强，且两条订单链路口径统一。
+     */
     private String generateOrderNo() {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-        String timestamp = LocalDateTime.now().format(formatter);
-        String uuid = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        return "GC" + timestamp + uuid;
+        return OrderNoGenerator.generate();
     }
 
     private String getStatusName(String status) {

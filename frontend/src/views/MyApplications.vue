@@ -1,7 +1,7 @@
-﻿<template>
+<template>
   <div class="min-h-screen bg-gray-50">
     <!-- 登录弹窗 -->
-    <LoginModal 
+    <LoginModal
       :visible="loginModalVisible"
       @close="handleLoginModalClose"
       @login="handleLoginSuccess"
@@ -9,8 +9,8 @@
 
     <section class="applications-banner">
       <div class="banner-content">
-        <h1>我的洽谈申请记录</h1>
-        <p>查看您提交的商务合作申请状态</p>
+        <h1>我的申请记录</h1>
+        <p>查看您提交的商务合作申请与客服工单状态</p>
       </div>
     </section>
 
@@ -23,83 +23,119 @@
             </svg>
           </div>
           <h3 class="text-xl font-semibold text-gray-700 mb-4">请先登录</h3>
-          <p class="text-gray-500 mb-6">登录后即可查看您的洽谈申请记录</p>
-          <button 
-            class="btn-primary"
-            @click="openLoginModal"
-          >立即登录</button>
+          <p class="text-gray-500 mb-6">登录后即可查看您的申请记录</p>
+          <button class="btn-primary" @click="openLoginModal">立即登录</button>
         </div>
 
         <div v-else>
-          <div class="flex items-center justify-between mb-8">
-            <h2 class="text-2xl font-bold text-dark">申请列表</h2>
-            <span class="text-gray-500">共 {{ applications.length }} 条记录</span>
+          <!-- Tab 切换：洽谈申请 / 客服工单 -->
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex gap-2">
+              <button
+                class="tab-btn"
+                :class="{ 'tab-btn-active': activeTab === 'cooperation' }"
+                @click="activeTab = 'cooperation'"
+              >洽谈申请（{{ cooperations.length }}）</button>
+              <button
+                class="tab-btn"
+                :class="{ 'tab-btn-active': activeTab === 'service' }"
+                @click="activeTab = 'service'"
+              >客服工单（{{ serviceRequests.length }}）</button>
+            </div>
+            <span class="text-gray-500 text-sm">
+              共 {{ activeTab === 'cooperation' ? cooperations.length : serviceRequests.length }} 条记录
+            </span>
           </div>
 
-          <div class="space-y-4">
-            <div 
-              v-for="(app, index) in applications" 
-              :key="index"
-              class="application-card"
-            >
+          <!-- 洽谈申请列表（真实接口：/client/cooperation/mine） -->
+          <div v-if="activeTab === 'cooperation'" class="space-y-4">
+            <div v-for="(app, index) in cooperations" :key="'c' + index" class="application-card">
               <div class="card-header">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-4">
-                    <div class="application-type">{{ app.type === 'cooperation' ? '大客户洽谈' : '媒体采访' }}</div>
-                    <span class="application-date">{{ app.date }}</span>
+                    <div class="application-type">{{ app.type === 'media' ? '媒体采访' : '大客户洽谈' }}</div>
+                    <span class="application-date">{{ fmtTime(app.createTime) }}</span>
                   </div>
-                  <span 
-                    class="status-badge"
-                    :class="getStatusClass(app.status)"
-                  >{{ getStatusText(app.status) }}</span>
+                  <span class="status-badge" :class="getCoopStatusClass(app.status)">{{ getCoopStatusText(app.status) }}</span>
                 </div>
               </div>
               <div class="card-body">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div class="info-item">
                     <span class="info-label">企业/媒体名称</span>
-                    <span class="info-value">{{ app.companyName }}</span>
+                    <span class="info-value">{{ app.companyName || app.mediaTitle || '-' }}</span>
                   </div>
                   <div class="info-item">
                     <span class="info-label">联系人</span>
-                    <span class="info-value">{{ app.contactPerson }}</span>
+                    <span class="info-value">{{ app.contactPerson || '-' }}</span>
                   </div>
                   <div class="info-item">
                     <span class="info-label">联系电话</span>
-                    <span class="info-value">{{ app.phone }}</span>
+                    <span class="info-value">{{ app.phone || '-' }}</span>
                   </div>
                 </div>
-                <div v-if="app.remark || app.description" class="mt-4">
+                <div v-if="app.intention || app.remark" class="mt-4">
                   <span class="info-label block mb-2">需求描述</span>
-                  <p class="text-gray-600 text-sm">{{ app.remark || app.description }}</p>
+                  <p class="text-gray-600 text-sm">{{ app.intention || app.remark }}</p>
                 </div>
-              </div>
-              <div class="card-footer">
-                <button 
-                  v-if="app.status === 'pending'"
-                  class="btn-secondary"
-                  @click="cancelApplication(index)"
-                >
-                  取消申请
-                </button>
-                <span v-else class="text-sm text-gray-400">
-                  {{ getStatusDesc(app.status) }}
-                </span>
+                <div v-if="app.reply" class="mt-4 reply-box">
+                  <span class="info-label block mb-2">平台回复</span>
+                  <p class="text-gray-600 text-sm">{{ app.reply }}</p>
+                </div>
               </div>
             </div>
 
-            <div v-if="applications.length === 0" class="text-center py-16">
-              <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-gray-100 flex items-center justify-center">
-                <svg class="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-                </svg>
-              </div>
-              <h3 class="text-lg font-medium text-gray-600 mb-2">暂无申请记录</h3>
+            <div v-if="loading" class="text-center py-16 text-gray-400">加载中...</div>
+            <div v-else-if="cooperations.length === 0" class="text-center py-16">
+              <h3 class="text-lg font-medium text-gray-600 mb-2">暂无洽谈申请</h3>
               <p class="text-gray-400 mb-6">您还没有提交过洽谈申请</p>
-              <button 
-                class="btn-primary"
-                @click="goToCooperation"
-              >去提交申请</button>
+              <button class="btn-primary" @click="goToCooperation">去提交申请</button>
+            </div>
+          </div>
+
+          <!-- 客服工单列表（真实接口：/client/service-request/mine） -->
+          <div v-else class="space-y-4">
+            <div v-for="(req, index) in serviceRequests" :key="'s' + index" class="application-card">
+              <div class="card-header">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-4">
+                    <div class="application-type type-service">客服工单</div>
+                    <span class="application-date">{{ fmtTime(req.createTime) }}</span>
+                  </div>
+                  <span class="status-badge" :class="getSvcStatusClass(req.status)">{{ getSvcStatusText(req.status) }}</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="info-item">
+                    <span class="info-label">问题类型</span>
+                    <span class="info-value">{{ req.question || '在线咨询' }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">联系人</span>
+                    <span class="info-value">{{ req.name || '-' }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">联系电话</span>
+                    <span class="info-value">{{ req.phone || '-' }}</span>
+                  </div>
+                </div>
+                <div v-if="req.content" class="mt-4">
+                  <span class="info-label block mb-2">问题描述</span>
+                  <p class="text-gray-600 text-sm">{{ req.content }}</p>
+                </div>
+                <div v-if="req.reply" class="mt-4 reply-box">
+                  <span class="info-label block mb-2">平台回复</span>
+                  <p class="text-gray-600 text-sm">{{ req.reply }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="loading" class="text-center py-16 text-gray-400">加载中...</div>
+            <div v-else-if="serviceRequests.length === 0" class="text-center py-16">
+              <h3 class="text-lg font-medium text-gray-600 mb-2">暂无客服工单</h3>
+              <p class="text-gray-400 mb-6">您还没有提交过客服工单</p>
+              <button class="btn-primary" @click="goContact">去咨询客服</button>
             </div>
           </div>
         </div>
@@ -112,112 +148,71 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import LoginModal from '../components/LoginModal.vue'
+import { api } from '../api/index'
 
 const router = useRouter()
 const userInfo = ref(null)
 const loginModalVisible = ref(false)
+const activeTab = ref('cooperation')
+const loading = ref(false)
 
-// 模拟申请数据
-const applications = ref([
-  {
-    id: '1',
-    type: 'cooperation',
-    companyName: '苏州新能源科技有限公司',
-    contactPerson: '张先生',
-    phone: '138****8888',
-    date: '2024-01-15 14:30',
-    status: 'approved',
-    remark: '希望采购大容量储能电池，用于工业园区储能项目，预计采购量500万。'
-  },
-  {
-    id: '2',
-    type: 'media',
-    companyName: '科技日报',
-    contactPerson: '李记者',
-    phone: '139****9999',
-    date: '2024-01-14 10:00',
-    status: 'pending',
-    description: '计划对贵公司进行深度采访，报道锂电池行业最新技术发展趋势。'
-  },
-  {
-    id: '3',
-    type: 'cooperation',
-    companyName: '上海智能制造有限公司',
-    contactPerson: '王经理',
-    phone: '137****7777',
-    date: '2024-01-10 09:15',
-    status: 'processing',
-    remark: '咨询锂电池整线解决方案，需要定制自动化生产线。'
+// 真实数据：洽谈申请 + 客服工单
+const cooperations = ref([])
+const serviceRequests = ref([])
+
+/** LocalDateTime 字符串截断展示 */
+const fmtTime = (t) => (t ? String(t).replace('T', ' ').slice(0, 16) : '-')
+
+// ===== 商务合作申请状态（后端 BusinessCooperation.status：0=待处理 1=已跟进 2=已关闭） =====
+const getCoopStatusText = (s) => ({ 0: '待处理', 1: '已跟进', 2: '已关闭' })[s] ?? '未知'
+const getCoopStatusClass = (s) => ({ 0: 'status-pending', 1: 'status-processing', 2: 'status-closed' })[s] || ''
+
+// ===== 客服工单状态（后端 CustomerServiceRequest.status：0=待处理 1=处理中 2=已关闭 3=已评价） =====
+const getSvcStatusText = (s) => ({ 0: '待处理', 1: '处理中', 2: '已关闭', 3: '已评价' })[s] ?? '未知'
+const getSvcStatusClass = (s) => ({ 0: 'status-pending', 1: 'status-processing', 2: 'status-closed', 3: 'status-approved' })[s] || ''
+
+const fetchData = async () => {
+  if (!userInfo.value) return
+  loading.value = true
+  try {
+    const [coopRes, svcRes] = await Promise.all([
+      api.getMyCooperations(),
+      api.getMyServiceRequests()
+    ])
+    cooperations.value = coopRes?.code === 200 ? (coopRes.data || []) : []
+    serviceRequests.value = svcRes?.code === 200 ? (svcRes.data || []) : []
+  } catch (e) {
+    console.error('[MyApplications] fetchData error:', e)
+    cooperations.value = []
+    serviceRequests.value = []
+  } finally {
+    loading.value = false
   }
-])
-
-const getStatusText = (status) => {
-  const statusMap = {
-    pending: '待审核',
-    processing: '处理中',
-    approved: '已通过',
-    rejected: '已拒绝',
-    cancelled: '已取消'
-  }
-  return statusMap[status] || status
 }
 
-const getStatusClass = (status) => {
-  const classMap = {
-    pending: 'status-pending',
-    processing: 'status-processing',
-    approved: 'status-approved',
-    rejected: 'status-rejected',
-    cancelled: 'status-cancelled'
-  }
-  return classMap[status] || ''
-}
+const openLoginModal = () => { loginModalVisible.value = true }
 
-const getStatusDesc = (status) => {
-  const descMap = {
-    processing: '我们正在处理您的申请，请耐心等待',
-    approved: '申请已通过，工作人员将尽快联系您',
-    rejected: '抱歉，您的申请未通过审核',
-    cancelled: '申请已取消'
-  }
-  return descMap[status] || ''
-}
-
-const openLoginModal = () => {
-  loginModalVisible.value = true
-}
-
-const handleLoginModalClose = () => {
-  loginModalVisible.value = false
-}
+const handleLoginModalClose = () => { loginModalVisible.value = false }
 
 const handleLoginSuccess = (user) => {
   userInfo.value = user
   loginModalVisible.value = false
+  fetchData()
 }
 
-const cancelApplication = (index) => {
-  if (confirm('确定要取消该申请吗？')) {
-    applications.value[index].status = 'cancelled'
-    alert('申请已取消')
-  }
-}
-
-const goToCooperation = () => {
-  router.push('/cooperation')
-}
+const goToCooperation = () => router.push('/cooperation')
+const goContact = () => router.push('/contact')
 
 onMounted(() => {
-  // 从localStorage读取登录状态
   const savedUser = localStorage.getItem('userInfo')
   if (savedUser) {
     try {
       userInfo.value = JSON.parse(savedUser)
+      fetchData()
     } catch (e) {
       console.error('Failed to parse user info:', e)
     }
   } else {
-    // 未登录，显示登录弹窗
     loginModalVisible.value = true
   }
 })
@@ -242,6 +237,24 @@ onMounted(() => {
   opacity: 0.9;
 }
 
+.tab-btn {
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  background: white;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  transition: all .3s ease;
+}
+
+.tab-btn-active {
+  background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%);
+  color: white;
+  border-color: transparent;
+}
+
 .application-card {
   background: white;
   border-radius: 12px;
@@ -261,6 +274,11 @@ onMounted(() => {
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 14px;
+}
+
+.type-service {
+  color: #2563eb;
+  background: #dbeafe;
 }
 
 .application-date {
@@ -290,18 +308,20 @@ onMounted(() => {
   color: #16a34a;
 }
 
-.status-rejected {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.status-cancelled {
+.status-closed {
   background: #f3f4f6;
   color: #6b7280;
 }
 
 .card-body {
   padding: 20px;
+}
+
+.reply-box {
+  background: #f8fafc;
+  border-left: 3px solid #0d9488;
+  padding: 12px 16px;
+  border-radius: 8px;
 }
 
 .info-item {
@@ -321,14 +341,6 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.card-footer {
-  padding: 12px 20px;
-  background: #f9fafb;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-
 .btn-primary {
   background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%);
   color: white;
@@ -344,22 +356,6 @@ onMounted(() => {
 .btn-primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 150, 136, 0.3);
-}
-
-.btn-secondary {
-  background: white;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.btn-secondary:hover {
-  background: #f9fafb;
-  color: #374151;
 }
 
 .text-dark {

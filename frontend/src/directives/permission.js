@@ -26,19 +26,28 @@ export default {
 
 /**
  * 检查是否拥有指定权限
- * 【项目形态：仅一个管理员端】
- * 只要已登录（admin_token 存在），管理员就拥有全部权限，永远放行。
- * 这样彻底根除"新功能 permission_key 没加到 fallback / localStorage 缓存过期"
- * 导致菜单、按钮、子页面被误过滤的问题。
- * 真正的权限校验仍在后端接口层执行，前端仅控制 UI 可见性。
+ * 规则（与后端 PermissionContext.hasPermission 对齐）：
+ * - 未登录（无 admin_token）：一律无权限
+ * - 超级管理员（admin_role_id === 1）：拥有全部权限，直接放行
+ * - 其他角色：精确匹配 localStorage 中的 admin_permissions 集合
+ *   （admin_permissions 由登录接口返回并写入，见 Login.vue setPermissions）
+ *
+ * 注意：后端 PermissionInterceptor 才是真正的权限防线（@RequiresPermission 注解），
+ * 前端仅用于菜单/按钮/路由的 UI 可见性控制。
  *
  * @param {string} permissionKey - 权限标识
  * @returns {boolean}
  */
 export function hasPermission(permissionKey) {
-  // 只要有 token 就认为是管理员 → 拥有全部权限，任意 permissionKey 直接放行
-  if (localStorage.getItem('admin_token')) return true
-  return false
+  // 未登录：无权限
+  if (!localStorage.getItem('admin_token')) return false
+  // 超级管理员（roleId=1）：与后端 isSuperAdmin / 通配符 "*" 行为一致
+  if (Number(localStorage.getItem('admin_role_id')) === 1) return true
+
+  const permissions = getPermissions()
+  // 通配符兜底（后端 admin 账号返回 Set.of("*") 时前端也放行）
+  if (permissions.includes('*')) return true
+  return permissions.includes(permissionKey)
 }
 
 /**

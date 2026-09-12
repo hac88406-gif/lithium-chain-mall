@@ -54,11 +54,12 @@ order:
     cron: "0 */5 * * * ?"
 
 # Dify AI 智能客服配置（双轨模型：deepseek 云端 + Ollama 本地降级）
-#  本地 Docker 部署的 Dify（localhost:8088）App Key 已配置为默认值；
-#  如更换 Dify 实例，请通过环境变量 DIFY_API_KEY 覆盖
+#  App Key 留空时，AI 客服自动降级为本地 FAQ 关键词匹配
+#  （DifyService 判空抛异常 → CozeController catch → FaqService 兜底）。
+#  如需启用 Dify，通过环境变量 DIFY_API_KEY 注入；切勿把密钥写进本文件。
 dify:
   base-url: ${DIFY_BASE_URL:http://localhost:8088/v1}
-  api-key: ${DIFY_API_KEY}
+  api-key: ${DIFY_API_KEY:}
   timeout-seconds: 60
 
 # ===== 支付配置（Mock 支付网关 + 策略模式，可扩展微信/支付宝） =====

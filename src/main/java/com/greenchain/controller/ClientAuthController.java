@@ -78,6 +78,13 @@ public class ClientAuthController {
             return result;
         }
 
+        // 禁用校验：管理后台将用户 status 置 0 后，禁止该账号继续登录
+        if (user.getStatus() != null && user.getStatus() != 1) {
+            result.put("code", 400);
+            result.put("message", "账号已被禁用，请联系客服");
+            return result;
+        }
+
         String token = jwtUtil.generateToken(user.getId().toString(), "USER");
 
         Map<String, Object> data = new HashMap<>();

@@ -210,12 +210,12 @@ export const adminApi = {
   offShelfProduct: (id) => instance.put(`/admin/product/${id}/off-shelf`),
   
   getOrders: (params) => instance.get('/admin/order/page', { params }),
-  updateOrder: (id, data) => instance.put(`/admin/order/${id}`, data),
-  deleteOrder: (id) => instance.delete(`/admin/order/${id}`),
-  
+
+  // ===== 买家用户管理（AdminUserController） =====
   getUsers: (params) => instance.get('/admin/user/page', { params }),
   updateUser: (id, data) => instance.put(`/admin/user/${id}`, data),
-  deleteUser: (id) => instance.delete(`/admin/user/${id}`),
+  // 重置用户密码（data: { password: 新密码 }，长度 6~20）
+  resetUserPassword: (id, data) => instance.post(`/admin/user/${id}/reset-password`, data),
 
   // ===== 资讯管理 =====
   // 后端 AdminNewsController GET /api/admin/news：params: current, size, keyword, category, status

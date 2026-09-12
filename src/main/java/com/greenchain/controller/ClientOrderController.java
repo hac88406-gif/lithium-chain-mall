@@ -5,17 +5,22 @@ import com.greenchain.entity.OrderItem;
 import com.greenchain.entity.Product;
 import com.greenchain.entity.UserAddress;
 import com.greenchain.annotation.IdempotentToken;
+import com.greenchain.dto.request.ClientOrderCreateRequest;
+import com.greenchain.dto.request.ClientOrderItemRequest;
 import com.greenchain.dto.response.PaymentVO;
 import com.greenchain.mapper.OrderItemMapper;
 import com.greenchain.mapper.OrderMapper;
 import com.greenchain.mapper.ProductMapper;
 import com.greenchain.mapper.UserAddressMapper;
+import com.greenchain.service.OrderService;
 import com.greenchain.service.PaymentService;
 import com.greenchain.util.CacheUtil;
+import com.greenchain.util.OrderNoGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.validation.Valid;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -53,58 +58,38 @@ public class ClientOrderController {
     @Autowired
     private PaymentService paymentService;
 
+    @Autowired
+    private OrderService orderService;
+
     /**
      * 创建订单
+     * <p>
+     * 参数校验：请求体由 {@link ClientOrderCreateRequest} 承载，方法参数上的 {@code @Valid}
+     * 在绑定阶段触发声明式校验（明细非空、商品ID非空、数量 1~9999、备注长度），
+     * 校验失败由 GlobalExceptionHandler 统一返回 {@code {code:400, message:"..."}}。
+     * 原先使用 Map 接收、方法体内靠 instanceof 取值，现已改为 DTO，JSON 结构不变。
+     * <p>
      * 幂等保护：请求头携带 Idempotent-Token（先调 GET /api/client/idempotent/token 获取），
      * 由 IdempotentAspect 校验并原子消费令牌，防止重复提交；业务逻辑本身不受影响。
      */
     @PostMapping
     @IdempotentToken
     public Map<String, Object> createOrder(@RequestAttribute("userId") Long userId,
-                                           @RequestBody Map<String, Object> request) {
+                                           @Valid @RequestBody ClientOrderCreateRequest request) {
         Map<String, Object> result = new HashMap<>();
 
-        Object itemsObj = request.get("items");
-        List<Map<String, Object>> items = new ArrayList<>();
-        if (itemsObj instanceof List) {
-            for (Object obj : (List<?>) itemsObj) {
-                if (obj instanceof Map) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> map = (Map<String, Object>) obj;
-                    items.add(map);
-                }
-            }
-        }
-
-        Long addressId = request.get("addressId") != null
-                ? ((Number) request.get("addressId")).longValue() : null;
-        String remark = (String) request.get("remark");
-
-        if (items.isEmpty()) {
-            result.put("code", 400);
-            result.put("message", "请选择商品");
-            return result;
-        }
+        List<ClientOrderItemRequest> items = request.getItems();
+        Long addressId = request.getAddressId();
+        String remark = request.getRemark();
 
         // ===== 新增①：下单二次校验（结算兜底，防止绕过购物车直接传参下单） =====
-        // 校验购买数量合法、商品存在、商品上架（status=1）；库存是否充足由锁内条件扣减保证
+        // 数量的合法性（非空、1~9999）已由 ClientOrderItemRequest 的注解在参数绑定阶段拦下，
+        // 这里只做"必须查库才能判断"的部分：商品存在、商品上架（status=1）；
+        // 库存是否充足由锁内条件扣减保证。
         // 商品快照缓存：productId → Product，后续算价/建明细直接复用，避免重复查库
         Map<Long, Product> productSnapshot = new HashMap<>();
-        for (Map<String, Object> item : items) {
-            Long productId = safeGetLong(item, "productId");
-            if (productId == null) {
-                result.put("code", 400);
-                result.put("message", "商品ID不能为空");
-                return result;
-            }
-            Integer quantity = item.get("quantity") instanceof Number
-                    ? ((Number) item.get("quantity")).intValue() : 1;
-
-            if (quantity <= 0) {
-                result.put("code", 400);
-                result.put("message", "购买数量必须大于0");
-                return result;
-            }
+        for (ClientOrderItemRequest item : items) {
+            Long productId = item.getProductId();
 
             Product product = productMapper.selectById(productId);
             if (product == null) {
@@ -124,17 +109,10 @@ public class ClientOrderController {
         // 锁 key：lock:product:{productId}，SETNX + 10s 过期，加锁失败直接返回业务失败（不自旋）；
         // 扣减使用数据库条件 UPDATE（stock >= quantity 才扣），即使锁异常也不会扣成负数；
         // 扣减成功的条目记录在 deducted 中，本订单后续步骤失败时统一回补（订单内补偿）。
-        List<Map<String, Object>> deducted = new ArrayList<>();
-        for (Map<String, Object> item : items) {
-            Long productId = safeGetLong(item, "productId");
-            if (productId == null) {
-                compensateStock(deducted);
-                result.put("code", 400);
-                result.put("message", "商品ID不能为空");
-                return result;
-            }
-            Integer quantity = item.get("quantity") instanceof Number
-                    ? ((Number) item.get("quantity")).intValue() : 1;
+        List<ClientOrderItemRequest> deducted = new ArrayList<>();
+        for (ClientOrderItemRequest item : items) {
+            Long productId = item.getProductId();
+            Integer quantity = item.getQuantity();
 
             String lockKey = LOCK_KEY_PREFIX + productId;
             // 加锁失败：回补已扣库存并直接返回，不做自旋等待
@@ -169,20 +147,19 @@ public class ClientOrderController {
             BigDecimal totalAmount = BigDecimal.ZERO;
             int totalQuantity = 0;
 
-            for (Map<String, Object> item : items) {
-                Long productId = safeGetLong(item, "productId");
-                if (productId == null) continue;
-                Integer quantity = item.get("quantity") instanceof Number
-                        ? ((Number) item.get("quantity")).intValue() : 1;
+            for (ClientOrderItemRequest item : items) {
                 // 取 DB 现价（商品快照已在上面的二次校验中查好，直接复用）
-                BigDecimal price = productSnapshot.get(productId).getPrice();
+                BigDecimal price = productSnapshot.get(item.getProductId()).getPrice();
 
-                totalAmount = totalAmount.add(price.multiply(BigDecimal.valueOf(quantity)));
-                totalQuantity += quantity;
+                totalAmount = totalAmount.add(price.multiply(BigDecimal.valueOf(item.getQuantity())));
+                totalQuantity += item.getQuantity();
             }
 
             order = new Order();
-            order.setOrderNo("GN" + System.currentTimeMillis());
+            // 订单号统一由 OrderNoGenerator 生成（GC + 毫秒时间戳 + 6 位随机码）。
+            // 原实现为 "GN" + System.currentTimeMillis()，同一毫秒内的并发下单会生成相同订单号，
+            // 触发 order_no 的 UNIQUE 约束导致下单失败（见 backend-run.log 中的历史报错）。
+            order.setOrderNo(OrderNoGenerator.generate());
             order.setUserId(userId);
             order.setAddressId(addressId);
             order.setTotalAmount(totalAmount);
@@ -192,27 +169,29 @@ public class ClientOrderController {
             order.setCreateTime(LocalDateTime.now());
             order.setUpdateTime(LocalDateTime.now());
 
-            orderMapper.insert(order);
-
-            for (Map<String, Object> item : items) {
-                Long productId = ((Number) item.get("productId")).longValue();
-                Integer quantity = item.get("quantity") instanceof Number
-                        ? ((Number) item.get("quantity")).intValue() : 1;
+            // 组装明细（orderId 由 OrderService 在事务内回填，此处不预设）
+            List<OrderItem> orderItems = new ArrayList<>();
+            for (ClientOrderItemRequest item : items) {
                 // B3 修复：明细单价同样取 DB 现价（复用商品快照），彻底废弃请求体 price
-                Product product = productSnapshot.get(productId);
+                Product product = productSnapshot.get(item.getProductId());
 
                 OrderItem orderItem = new OrderItem();
-                orderItem.setOrderId(order.getId());
-                orderItem.setProductId(productId);
+                orderItem.setProductId(item.getProductId());
                 orderItem.setName(product != null ? product.getName() : "");
                 orderItem.setImage(product != null ? product.getImage() : "");
                 orderItem.setSpec("");
                 orderItem.setPrice(product != null ? product.getPrice() : BigDecimal.ZERO);
-                orderItem.setQuantity(quantity);
+                orderItem.setQuantity(item.getQuantity());
                 orderItem.setCreateTime(LocalDateTime.now());
 
-                orderItemMapper.insert(orderItem);
+                orderItems.add(orderItem);
             }
+
+            // 主表与明细在同一事务内写入：任一步失败整体回滚，不会残留"有订单无明细"的脏数据。
+            // 说明：库存扣减故意不纳入本事务 —— 它发生在 Redis 锁内（每条商品一次短事务），
+            // 若并入大事务，解锁会早于事务提交，持锁期间的行锁等待反而会放大并发冲突；
+            // 因此库存仍沿用锁内条件 UPDATE + 下方 compensateStock 补偿的方案。
+            orderService.saveOrderWithItems(order, orderItems);
         } catch (Exception e) {
             // 订单创建失败：回补本订单已扣减的库存，避免库存凭空丢失
             compensateStock(deducted);
@@ -228,35 +207,13 @@ public class ClientOrderController {
     }
 
     /**
-     * 从 Map 中安全获取 Long 类型值，防止空指针和类型转换异常
-     * <p>
-     * P0-4 修复：替代直接 ((Number) map.get(key)).longValue() 的强转写法，
-     * 当值为 null 或非 Number 类型时返回 null，由调用方自行处理缺省值或返回错误。
-     *
-     * @param map 源 Map
-     * @param key 键名
-     * @return Long 值，或 null（key 不存在或值类型不匹配）
-     */
-    private Long safeGetLong(Map<String, Object> map, String key) {
-        if (map == null || key == null) return null;
-        Object value = map.get(key);
-        if (value instanceof Number) {
-            return ((Number) value).longValue();
-        }
-        return null;
-    }
-
-    /**
      * 下单中途失败时，回补本订单已成功扣减的库存（订单内补偿，非订单取消回滚）
      * 注意：本阶段不实现订单取消/退款的库存回滚，取消订单仍沿用原有回补逻辑。
      */
-    private void compensateStock(List<Map<String, Object>> deducted) {
-        for (Map<String, Object> item : deducted) {
-            Long productId = safeGetLong(item, "productId");
-            if (productId == null) continue;
-            Integer quantity = item.get("quantity") instanceof Number
-                    ? ((Number) item.get("quantity")).intValue() : 1;
-            productMapper.restoreStock(productId, quantity);
+    private void compensateStock(List<ClientOrderItemRequest> deducted) {
+        for (ClientOrderItemRequest item : deducted) {
+            if (item.getProductId() == null) continue;
+            productMapper.restoreStock(item.getProductId(), item.getQuantity());
         }
     }
 

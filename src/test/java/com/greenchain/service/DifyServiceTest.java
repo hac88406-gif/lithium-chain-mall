@@ -72,9 +72,11 @@ class DifyServiceTest {
         @DisplayName("API Key 未配置 → 抛异常（上层 catch 降级 FAQ）")
         void should_throw_when_apiKey_empty() throws Exception {
             injectObjectMapper();
+            // 注意：只 stub 会真正被调用的 getApiKey/getBaseUrl。
+            // apiKey 为空时 DifyService 提前抛异常，getTimeoutSeconds 不会被调用，
+            // stub 它会触发 Mockito 严格模式的 UnnecessaryStubbingException。
             when(difyConfig.getApiKey()).thenReturn("");
             when(difyConfig.getBaseUrl()).thenReturn("http://localhost:8088/v1");
-            when(difyConfig.getTimeoutSeconds()).thenReturn(60);
 
             RuntimeException ex = assertThrows(RuntimeException.class, () ->
                     difyService.chat("s1", "你好"));

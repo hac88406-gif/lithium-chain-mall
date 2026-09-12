@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -54,16 +55,15 @@ class IdempotentAspectTest {
         @DisplayName("请求头缺失 Idempotent-Token → 返回 400 拦截")
         void should_intercept_when_header_missing() throws Throwable {
             // 每个方法独立创建 mock（@Nested 子类不继承父 @BeforeEach）
-            HttpServletRequest request = mock(HttpServletRequest.class);
+            // 注意：ServletRequestAttributes.getRequest() 是 final 方法，不能被 Mockito stub，
+            // 所以用 spring-test 的 MockHttpServletRequest 真实对象代替
             IdempotentToken annotation = mock(IdempotentToken.class);
             org.aspectj.lang.ProceedingJoinPoint pjp = mock(org.aspectj.lang.ProceedingJoinPoint.class);
-            ServletRequestAttributes attrs = mock(ServletRequestAttributes.class);
-            when(attrs.getRequest()).thenReturn(request);
-            RequestContextHolder.setRequestAttributes(attrs);
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
-            // given：请求头为空
-            when(request.getHeader("Idempotent-Token")).thenReturn(null);
-            when(request.getRequestURI()).thenReturn("/api/client/order/create");
+            // given：请求头为空（MockHttpServletRequest 默认不带 Idempotent-Token 头）
+            request.setRequestURI("/api/client/order/create");
 
             // when
             Object result = idempotentAspect.around(pjp, annotation);
@@ -78,16 +78,14 @@ class IdempotentAspectTest {
         @Test
         @DisplayName("令牌不存在于 Redis（已被消费或过期）→ 返回 400 拦截")
         void should_intercept_when_token_not_in_redis() throws Throwable {
-            HttpServletRequest request = mock(HttpServletRequest.class);
             IdempotentToken annotation = mock(IdempotentToken.class);
             org.aspectj.lang.ProceedingJoinPoint pjp = mock(org.aspectj.lang.ProceedingJoinPoint.class);
-            ServletRequestAttributes attrs = mock(ServletRequestAttributes.class);
-            when(attrs.getRequest()).thenReturn(request);
-            RequestContextHolder.setRequestAttributes(attrs);
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            request.addHeader("Idempotent-Token", "token-abc-123");
+            request.setRequestURI("/api/client/order/create");
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
             // given：Redis 查不到令牌
-            when(request.getHeader("Idempotent-Token")).thenReturn("token-abc-123");
-            when(request.getRequestURI()).thenReturn("/api/client/order/create");
             when(cacheUtil.get("idempotent:token:token-abc-123")).thenReturn(null);
 
             Object result = idempotentAspect.around(pjp, annotation);
@@ -151,21 +149,19 @@ class IdempotentAspectTest {
     @DisplayName("放行业务 - 请求合法时应该通过")
     class PassScenarios {
 
-        private HttpServletRequest request;
+        private MockHttpServletRequest request;
         private IdempotentToken annotation;
         private org.aspectj.lang.ProceedingJoinPoint pjp;
 
         /** 准备一个合法请求上下文：令牌存在 + 归属正确 + 未被消费 */
         private void setupValidRequestContext() {
-            request = mock(HttpServletRequest.class);
             annotation = mock(IdempotentToken.class);
             pjp = mock(org.aspectj.lang.ProceedingJoinPoint.class);
-            ServletRequestAttributes attrs = mock(ServletRequestAttributes.class);
-            when(attrs.getRequest()).thenReturn(request);
-            RequestContextHolder.setRequestAttributes(attrs);
+            request = new MockHttpServletRequest();
+            request.addHeader("Idempotent-Token", "token-valid-001");
+            request.setAttribute("userId", 200L);
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
-            when(request.getHeader("Idempotent-Token")).thenReturn("token-valid-001");
-            when(request.getAttribute("userId")).thenReturn(200L);
             when(cacheUtil.get("idempotent:token:token-valid-001")).thenReturn(200L);
             when(cacheUtil.deleteIfPresent("idempotent:token:token-valid-001")).thenReturn(true);
         }

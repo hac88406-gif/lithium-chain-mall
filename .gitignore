@@ -72,3 +72,10 @@ $RECYCLE.BIN/
 
 # ---------- 本地私有配置（密钥 / 密码 / 真实地址）----------
 application-local.yml
+
+# ---------- 个人隐私（面试资料 / AI 工作目录，严禁上传）----------
+interview-prep/
+.workbuddy/
+~$*.docx
+~$*.doc
+~$*.xlsx

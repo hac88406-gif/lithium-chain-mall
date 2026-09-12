@@ -214,22 +214,22 @@ router.beforeEach((to, from, next) => {
     return
   }
 
-  // 细粒度权限校验
+  // 细粒度权限校验（meta.permission 声明在此真正生效）
   if (to.meta.requiresAuth && to.meta.permission) {
     // 超级管理员拥有全部权限，直接放行
     if (roleId === 1) {
       next()
       return
     }
-    const permissions = getPermissions()
-    // 如果没有权限数据（测试阶段或未从后端获取），默认允许访问
-    if (permissions.length === 0) {
-      next()
-      return
-    }
-    // 销售运营后台：运营角色登录即可访问其业务页面
-    if (to.path.startsWith('/sale-admin')) {
-      next()
+    // 已登录但本地权限数据为空（异常态，如旧版本缓存未写权限）：清除管理端登录态后回登录页重新获取，
+    // 不再像旧逻辑那样"权限为空即放行全部页面"。
+    // 必须先清 admin_token，否则守卫里"已登录访问登录页 → 重定向回后台"会造成死循环。
+    if (getPermissions().length === 0) {
+      localStorage.removeItem('admin_token')
+      localStorage.removeItem('admin_role_id')
+      localStorage.removeItem('admin_role_name')
+      localStorage.removeItem('admin_permissions')
+      next('/admin/login')
       return
     }
     if (!hasPermission(to.meta.permission)) {

@@ -6,7 +6,8 @@
 # ==========================================================================
 
 # ---- Stage 1: Maven 编译 ----
-FROM maven:3.8-eclipse-temurin-8 AS builder
+# 注意：pom.xml 中 java.version=17，构建镜像必须用 JDK 17（原为 JDK 8，无法编译）
+FROM maven:3.8-eclipse-temurin-17 AS builder
 
 WORKDIR /build
 
@@ -19,11 +20,15 @@ RUN --mount=type=cache,target=/root/.m2 \
     mvn dependency:go-offline -B
 
 # 再复制源码并打包
+# 注意：application-local.yml 含真实密钥，已在 .dockerignore 中排除，不会被打进镜像
+COPY src ./src
+
 RUN --mount=type=cache,target=/root/.m2 \
     mvn clean package -DskipTests -B
 
-# ---- Stage 2: 仅运行 jar（openjdk:8-jre 比 jdk 小很多）----
-FROM eclipse-temurin:8-jre
+# ---- Stage 2: 仅运行 jar（jre 比 jdk 小很多）----
+# 必须与 java.version=17 一致，否则运行时报 UnsupportedClassVersionError
+FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 

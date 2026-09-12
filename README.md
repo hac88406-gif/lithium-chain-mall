@@ -13,7 +13,7 @@
 <h1 align="center">🔋 绿链锂电 · 全链路采购商城与数字化智能制造平台</h1>
 
 <p align="center">
-  <b>面向锂电新能源行业的 B2B2C 一体化平台：买家端商城 + 销售运营后台 + RBAC 权限审计 + 数字孪生工艺图谱大屏</b>
+  <b>面向锂电新能源行业的 B2B2C 一体化平台：买家端商城 + 销售运营后台 + RBAC 权限模型 + 数字孪生工艺图谱大屏</b>
 </p>
 
 <p align="center">
@@ -29,9 +29,9 @@
 
 ## 🎯 项目简介
 
-**绿链锂电采购平台**是一个围绕锂电新能源产业链打造的全链路数字化系统，既包含面向终端客户的 **B2C 电商商城**（商品浏览、下单、支付、售后、智能客服），也包含面向内部运营的 **B2B 管理后台**（订单履约、商品库存、售后审核、商务合作、RBAC 权限与操作审计），同时基于 **Neo4j 图数据库 + ECharts/Three.js** 构建了**数字孪生工艺图谱**，可视化展示锂电从「配料 → 涂布 → 辊压 → 分切 → 叠片/卷绕 → 装配 → 化成分容 → PACK 模组」的完整工艺流程，并支持**产品全生命周期追溯**与**风险工序定位分析**。
+**绿链锂电采购平台**是一个围绕锂电新能源产业链打造的全链路数字化系统，既包含面向终端客户的 **B2C 电商商城**（商品浏览、下单、支付、售后、智能客服），也包含面向内部运营的 **B2B 管理后台**（订单履约、商品库存、售后审核、商务合作、RBAC 权限模型），同时基于 **Neo4j 图数据库 + ECharts/Three.js** 构建了**数字孪生工艺图谱**，可视化展示锂电从「配料 → 涂布 → 辊压 → 分切 → 叠片/卷绕 → 装配 → 化成分容 → PACK 模组」的完整工艺流程，并支持**产品全生命周期追溯**与**风险工序定位分析**。
 
-> 本项目为个人毕业设计/作品集项目，**所有技术选型与实现细节均面向真实生产场景进行设计**：支付幂等与回调防伪造、订单并发安全、防重放攻击、操作审计日志、AI 智能客服降级兜底等均可直接迁移至生产环境。
+> 本项目为个人毕业设计/作品集项目，**所有技术选型与实现细节均面向真实生产场景进行设计**：支付幂等与回调防伪造、订单并发安全、防重放攻击、AI 智能客服降级兜底等均可直接迁移至生产环境。
 
 ---
 
@@ -42,7 +42,7 @@
 | 🔌 **支付体系策略模式** | Mock 支付网关 + 策略接口可扩展微信/支付宝，幂等流水表 + 签名验签 + 订单状态机 |
 | 🔗 **订单一致性保障** | 防重令牌切面 + 改价免疫（DB 价格重算）+ 条件 UPDATE 原子关单/库存回补 |
 | 🧬 **数字孪生工艺图谱** | Neo4j 工序节点 + NEXT_STEP 关系边，ECharts Graph 高亮联动，Three.js 工厂 3D 展示 |
-| 🛡 **RBAC + 三拦截器链** | 鉴权 → 细粒度权限 → 操作审计，三拦截器有序串联，ThreadLocal 权限上下文 |
+| 🛡 **RBAC + 拦截器链** | 鉴权 → 细粒度权限 → 下单限流，拦截器有序串联，ThreadLocal 权限上下文 |
 | 🤖 **AI 客服双轨降级** | Dify SSE 流式响应（deepseek 云端 + Ollama 本地），异常自动降级 FAQ 关键词匹配 |
 | 📊 **全屏数据驾驶舱** | 1920×1080 设计稿 transform 缩放适配，6 大核心指标 + 4 张图表实时刷新 |
 | 🚀 **Docker 一键编排** | MySQL/Redis/Neo4j/MinIO/Backend/Frontend 6 服务 healthcheck 顺序启动 |
@@ -69,11 +69,11 @@
 | 运营管理 | 商务合作审核、价格报价单、新闻管理、工单管理、供应商管理、车间管理 |
 | 个人 | 系统设置、个人中心 |
 
-### 🔐 权限与审计（RBAC，后端已实现）
+### 🔐 权限模型（RBAC，后端已实现）
 | 模块 | 说明 |
 |------|------|
-| 数据模型 | `SysAdmin / SysRole / SysRolePermission / SysPermission` 权限表 + `SysOperLog` 审计表（含种子数据） |
-| 后端链路 | 三拦截器有序串联：AdminAuth 鉴权（JWT + 禁用校验 + ThreadLocal）→ Permission 细粒度鉴权（`@RequiresPermission`）→ AdminAudit 操作审计（异步落库、失败降级） |
+| 数据模型 | `SysAdmin / SysRole / SysRolePermission / SysPermission` 四张权限表，角色-权限关联含种子数据（`operator` 为销售运营角色） |
+| 后端链路 | 双拦截器串联：AdminAuth 鉴权（JWT + 禁用校验 + ThreadLocal 传递）→ Permission 细粒度鉴权（读取方法上的 `@RequiresPermission`，与角色权限键精确匹配，不匹配返回 403） |
 | 前端 | 管理员与销售运营共用 `/admin/login` 登录，按角色跳转运营后台；角色/权限管理页面为后续规划 |
 
 ---
@@ -133,7 +133,7 @@
 │                    Spring Boot 后端 (8080)                         │
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐              │
 │  │ Controller  │  │  拦截器链    │  │  AOP 切面    │              │
-│  │ (30+ APIs)  │  │ 鉴权→权限→审计│  │ 幂等防重令牌  │              │
+│  │ (30+ APIs)  │  │ 鉴权→权限→限流│  │ 幂等防重令牌  │              │
 │  └──────┬──────┘  └──────────────┘  └──────────────┘              │
 │         │                                                          │
 │  ┌──────▼──────┐  ┌──────────────┐  ┌──────────────┐              │
@@ -300,7 +300,7 @@ PaymentController.notify()
 - **产品追溯：** 输入产品编码（如 PRD003 动力电池包），沿 `NEXT_STEP` 箭头方向依序点亮经过的工序；跳过节点时自动补绿色虚线桥接边保证链路视觉连续
 - **大屏 3D 展示：** Three.js 加载 `Green-chain.glb` 工厂模型，OrbitControls 交互式漫游
 
-### 4. RBAC 权限 + 三拦截器链 + 操作审计
+### 4. RBAC 权限 + 拦截器链
 
 ```
 HTTP 请求 → DispatcherServlet
@@ -314,11 +314,6 @@ HTTP 请求 → DispatcherServlet
     │      ├─ 读取 Handler 上 @RequiresPermission("order:review")
     │      ├─ 查询 sys_permission 树匹配当前角色
     │      └─ 不匹配 → 403 "无操作权限"（admin 角色直接放行）
-    │
-    ├─ AdminAuditInterceptor       ③ 审计
-    │      ├─ afterCompletion 阶段异步写入 sys_oper_log
-    │      ├─ 记录：操作人/IP/模块/请求参数/响应状态/耗时
-    │      └─ 审计失败优雅降级 → 仅打 warn 日志不影响主业务
     │
     ▼
 Controller → Service → Mapper → DB
@@ -350,6 +345,30 @@ CozeController / DifyService
 
 ## 🗄 数据库（23 张业务表）
 
+### 表关系（ER 图）
+
+```mermaid
+erDiagram
+    user ||--o{ user_address : "收货地址"
+    user ||--o{ cart_item : "加购(扁平表)"
+    user ||--o{ t_cart : "加购(新版表)"
+    user ||--o{ order : "下单"
+    category ||--o{ product : "分类归属"
+    product ||--o{ cart_item : "被加购"
+    product ||--o{ t_cart : "被加购"
+    order ||--|{ order_item : "订单明细"
+    product ||--o{ order_item : "被购买"
+    order ||--o{ payment_transaction : "支付流水"
+    order ||--o{ after_sale : "售后申请"
+    sys_role ||--o{ sys_admin : "角色分配"
+    sys_role ||--o{ sys_role_permission : "角色授权"
+    sys_permission ||--o{ sys_role_permission : "权限项"
+```
+
+> 注：`cart_item`（扁平项结构，兼容老版前端）与 `t_cart`（新版 Service 层用，支持逻辑删除）
+> 是**两套并存的购物车实现**，彼此无外键关系。订单同理存在两条链路：
+> `ClientOrderController`（客户端直购，前端实际调用）与 `OrderServiceImpl`（购物车结算，后台与定时任务用）。
+
 ### 核心业务链
 ```
 User(用户) → Cart(购物车) + CartItem
@@ -359,11 +378,11 @@ Order(订单) + OrderItem → PaymentTransaction(支付流水)
 AfterSale(售后) + evidence(图片凭证，逗号分隔URL)
 ```
 
-### 权限与审计
+### 权限模型
 ```
 SysAdmin → SysRole → SysRolePermission → SysPermission（权限树）
      ↓
-SysOperLog（操作审计，拦截器自动写入）
+（注：权限键与角色通过 sys_role_permission 关联，种子数据见 schema.sql 3.1 段）
 ```
 
 ### 其他
@@ -375,7 +394,7 @@ SysOperLog（操作审计，拦截器自动写入）
 
 | 角色 | 登录入口 | 账号 | 密码 | 权限范围 |
 |------|---------|------|------|---------|
-| 系统超管 | `/#/admin/login` | `admin` | `admin123` | 全部功能 + RBAC 数据模型 + 审计日志（拦截器自动记录） |
+| 系统超管 | `/#/admin/login` | `admin` | `admin123` | 全部功能 + RBAC 数据模型（`admin` 角色在后端按通配放行） |
 | 销售运营 | `/#/admin/login` | `operator` | `op123456` | 商品/订单/售后/运营（不含用户权限分配） |
 | 普通买家 | 顶部登录弹框 | `demo_buyer_001` | `123456` | 购物/下单/售后/工单 |
 | 普通买家 | 顶部登录弹框 | `demo_buyer_002` | `123456` | 同上 |
@@ -396,7 +415,7 @@ green-chain-procurement/
 │   ├── controller/          # Controller 层（30+ 接口，Client / Admin 分包）
 │   ├── dto/                 # request 请求体 + response 视图对象（VO）
 │   ├── entity/              # MyBatis-Plus Entity（23 张表）
-│   ├── interceptor/         # 拦截器链：ClientAuth / AdminAuth / Permission / AdminAudit / 订单限流
+│   ├── interceptor/         # 拦截器链：ClientAuth / AdminAuth / Permission / 订单限流
 │   ├── mapper/              # MyBatis-Plus BaseMapper + 自定义原子 SQL 方法
 │   ├── payment/             # 支付子包：策略接口 + Mock 实现 + 签名工具 + 配置
 │   │   └── dto/             # PrePay/Notify/Refund 请求响应

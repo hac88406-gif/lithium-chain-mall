@@ -478,6 +478,37 @@ INSERT IGNORE INTO sys_role (`id`, `role_name`, `remark`, `status`) VALUES
 (1, '超级管理员',   '拥有全部权限(roleId=1在前端/后端都会被豁免)', 1),
 (2, '销售运营',     '负责订单/售后/客户/商品/品类业务,不含系统配置与审计', 1);
 
+-- 3.1) 角色-权限关联（原先缺失：sys_role_permission 全表无数据，
+--      导致 operator 登录后 getAdminPermissions 返回空集，
+--      被 PermissionInterceptor 拦在所有带 @RequiresPermission 的接口之外，全部 403）
+--      权限键与 Controller 上的 @RequiresPermission value 严格一一对应：
+--      sys:carousel:list/add/edit/delete、sys:news:list/add/edit/delete、
+--      sys:aftersale:list/review、sys:upload:image
+--      不含：用户管理(15-17)、系统配置(26)、权限/角色/管理员(27-35)、审计(43)
+INSERT IGNORE INTO sys_role_permission (`role_id`, `permission_id`) VALUES
+-- 仪表盘 + 全屏数据大屏
+(2, 1),  (2, 46),
+-- 商品分类管理
+(2, 2),  (2, 3),  (2, 4),  (2, 5),
+-- 商品管理（增删改 + 导出）
+(2, 6),  (2, 7),  (2, 8),  (2, 9),  (2, 10),
+-- 订单管理（编辑 + 删除 + 导出）
+(2, 11), (2, 12), (2, 13), (2, 14),
+-- 资讯管理（运营）
+(2, 18), (2, 19), (2, 20), (2, 21),
+-- 首页轮播管理（运营）
+(2, 22), (2, 23), (2, 24), (2, 25),
+-- 售后管理 + 售后审核
+(2, 36), (2, 37),
+-- 图片上传
+(2, 38),
+-- 车间工艺管理
+(2, 42),
+-- 商务合作申请
+(2, 44),
+-- 人工客服请求
+(2, 45);
+
 -- 4) 车间种子(与 schema-permission.sql 一致)
 INSERT IGNORE INTO t_workshop (`id`, `name`, `location`, `area`, `description`, `model_url`) VALUES
 (1, '冲压车间', 'A栋1层', 2000.00, '极片冲压加工车间', '/models/stamping.glb'),
