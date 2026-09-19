@@ -4,14 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.greenchain.common.BusinessException;
-import com.greenchain.dto.request.OrderCreateRequest;
 import com.greenchain.dto.response.OrderItemVO;
 import com.greenchain.dto.response.OrderVO;
 import com.greenchain.dto.response.PageResult;
 import com.greenchain.entity.*;
 import com.greenchain.mapper.*;
 import com.greenchain.service.OrderService;
-import com.greenchain.util.OrderNoGenerator;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,10 +25,9 @@ import java.util.List;
 /**
  * 订单服务实现类
  * <p>
- * 注意：项目存在两套订单链路——本类（Service 风格，大写状态 PENDING/CANCELLED）
- * 与 ClientOrderController（Controller 直连 Mapper 风格，小写状态 pending/cancelled）。
- * 前端实际调用的是 ClientOrderController，本类主要供管理后台及定时任务使用。
- * 为统一状态语义，cancel/cancelBySystem 已对齐为小写状态值（pending/cancelled），
+ * 注意：客户端下单统一走 ClientOrderController（直购链路，小写状态值 pending/cancelled）；
+ * 本类提供 saveOrderWithItems 供其复用事务化写入（先主表后明细，异常整体回滚），
+ * 同时为管理后台（listAll / getById）与定时任务（cancelBySystem 超时关单）提供服务。
  * 库存回补统一使用 ProductMapper.restoreStock 原子方法（条件 UPDATE，防并发回补过量）。
  */
 @Slf4j
@@ -39,79 +37,8 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
-    private final CartMapper cartMapper;
     private final ProductMapper productMapper;
     private final UserMapper userMapper;
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public OrderVO create(Long userId, OrderCreateRequest request) {
-        // 校验购物车项
-        if (request.getCartIds() == null || request.getCartIds().isEmpty()) {
-            throw new BusinessException(400, "请选择要结算的商品");
-        }
-
-        // 查询所有购物车项（仅做归属校验 + 金额计算，不再做"SELECT stock"这种并发不安全的预判）
-        List<Cart> cartList = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
-
-        for (Long cartId : request.getCartIds()) {
-            Cart cart = cartMapper.selectById(cartId);
-            if (cart == null || !cart.getUserId().equals(userId)) {
-                throw new BusinessException(400, "购物车项不存在或不属于当前用户");
-            }
-            cartList.add(cart);
-
-            Product product = productMapper.selectById(cart.getProductId());
-            if (product == null) {
-                throw new BusinessException(400, "商品不存在");
-            }
-            totalAmount = totalAmount.add(product.getPrice().multiply(new BigDecimal(cart.getQuantity())));
-        }
-
-        // ===== 防超卖：原子条件扣库存 =====
-        // 替换旧写法（SELECT stock → setStock → updateById 读改写），
-        // 改用 ProductMapper.deductStock：单条 SQL 条件 UPDATE，stock>=quantity 才扣，
-        // 返回 0 说明扣减失败（并发下已被别人抢光或库存不足），直接抛异常让 @Transactional 回滚。
-        // 先扣库存再插订单：一旦某个商品扣减失败，前面已经扣掉的库存也会随事务回滚自动还原。
-        for (Cart cart : cartList) {
-            int rows = productMapper.deductStock(cart.getProductId(), cart.getQuantity());
-            if (rows == 0) {
-                Product p = productMapper.selectById(cart.getProductId());
-                String name = p != null ? p.getName() : "商品#" + cart.getProductId();
-                throw new BusinessException(400, "商品[" + name + "]库存不足，请稍后再试");
-            }
-        }
-
-        // 创建订单（小写状态值，与 ClientOrderController 统一）
-        Order order = new Order();
-        order.setOrderNo(generateOrderNo());
-        order.setUserId(userId);
-        order.setTotalAmount(totalAmount);
-        order.setStatus("pending");
-        order.setRemark(request.getRemark());
-        orderMapper.insert(order);
-
-        // 创建订单明细（不再做库存扣减，已在上面一次性原子扣完）
-        for (Cart cart : cartList) {
-            Product product = productMapper.selectById(cart.getProductId());
-            OrderItem item = new OrderItem();
-            item.setOrderId(order.getId());
-            item.setProductId(cart.getProductId());
-            item.setName(product.getName());
-            item.setPrice(product.getPrice());
-            item.setQuantity(cart.getQuantity());
-            orderItemMapper.insert(item);
-        }
-
-        // 删除已结算的购物车项
-        for (Cart cart : cartList) {
-            cartMapper.deleteById(cart.getId());
-        }
-
-        log.info("创建订单成功：{}，金额：{}", order.getOrderNo(), totalAmount);
-        return convertToVO(order);
-    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -126,37 +53,6 @@ public class OrderServiceImpl implements OrderService {
             }
         }
         return order;
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public OrderVO pay(Long userId, Long orderId) {
-        Order order = orderMapper.selectById(orderId);
-        if (order == null || !order.getUserId().equals(userId)) {
-            throw new BusinessException(404, "订单不存在");
-        }
-        if (!"pending".equals(order.getStatus())) {
-            throw new BusinessException(400, "订单状态不正确，无法支付");
-        }
-        order.setStatus("paid");
-        orderMapper.updateById(order);
-        log.info("订单支付成功：{}", order.getOrderNo());
-        return convertToVO(order);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public OrderVO cancel(Long userId, Long orderId) {
-        Order order = orderMapper.selectById(orderId);
-        if (order == null || !order.getUserId().equals(userId)) {
-            throw new BusinessException(404, "订单不存在");
-        }
-        // 用户取消：允许取消待支付和已支付两种状态（用户视角：支付后仍可申请取消）
-        if (!"pending".equals(order.getStatus()) && !"paid".equals(order.getStatus())) {
-            throw new BusinessException(400, "订单状态不正确，无法取消");
-        }
-        doCancelOrder(order, "用户取消");
-        return convertToVO(order);
     }
 
     @Override
@@ -180,8 +76,8 @@ public class OrderServiceImpl implements OrderService {
     /**
      * 共享的订单取消私有方法：更新状态 + 原子回补库存
      * <p>
-     * 用户取消（cancel）和系统取消（cancelBySystem）共用本方法，
-     * 区别仅在取消前的状态校验和归属校验（由调用方负责）。
+     * 系统取消（cancelBySystem）及未来的取消场景共用本方法，
+     * 取消前的状态校验和归属校验由调用方负责。
      * <p>
      * 库存回补使用 ProductMapper.restoreStock 原子方法（条件 UPDATE：stock + quantity），
      * 比 setStock 非原子操作更严谨，并发下不会回补过量。
@@ -206,17 +102,6 @@ public class OrderServiceImpl implements OrderService {
 
         log.info("订单取消成功：{}，原因：{}，回补库存件数：{}",
                 order.getOrderNo(), reason, restoredTotal);
-    }
-
-    @Override
-    public PageResult<OrderVO> listByUserId(Long userId, Long current, Long size) {
-        Page<Order> page = new Page<>(current, size);
-        LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Order::getUserId, userId)
-               .orderByDesc(Order::getCreateTime);
-        IPage<Order> orderPage = orderMapper.selectPage(page, wrapper);
-        IPage<OrderVO> voPage = orderPage.convert(this::convertToVO);
-        return PageResult.of(voPage);
     }
 
     @Override
@@ -276,16 +161,6 @@ public class OrderServiceImpl implements OrderService {
         vo.setItems(itemVOs);
 
         return vo;
-    }
-
-    /**
-     * 生成订单号：统一委托给 {@link OrderNoGenerator}，与 ClientOrderController 保持一致。
-     * <p>
-     * 原实现为 {@code "GC" + yyyyMMddHHmmss + UUID前8位}（秒级精度），
-     * 现改为毫秒级时间戳 + 6 位随机码，并发唯一性更强，且两条订单链路口径统一。
-     */
-    private String generateOrderNo() {
-        return OrderNoGenerator.generate();
     }
 
     private String getStatusName(String status) {

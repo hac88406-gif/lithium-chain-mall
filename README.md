@@ -149,7 +149,7 @@
           │                │
 ┌─────────▼────────────────▼───────┐  ┌────────────────────────────┐
 │         MySQL 8.0  (3306)        │  │  Redis 6/7  (6379)          │
-│  23 张业务表 / 订单 / 支付流水    │  │  购物车 / 幂等令牌 / 缓存   │
+│  22 张业务表 / 订单 / 支付流水    │  │  购物车 / 幂等令牌 / 缓存   │
 └──────────────────────────────────┘  └────────────────────────────┘
 ┌──────────────────────────────────┐  ┌────────────────────────────┐
 │        Neo4j  (7474 / 7687)      │  │  MinIO  (9000 / 9001)       │
@@ -205,7 +205,7 @@ docker-compose ps
 
 ```bash
 # ========== 1. 初始化数据库 ==========
-# MySQL: schema.sql 为完整单文件版（自动建库 green_chain + 23 张表 + 权限表及种子数据）
+# MySQL: schema.sql 为完整单文件版（自动建库 green_chain + 22 张表 + 权限表及种子数据）
 mysql -uroot -p < src/main/resources/schema.sql
 mysql -uroot -p green_chain < src/main/resources/sql/product_seed.sql
 mysql -uroot -p green_chain < src/main/resources/sql/demo_init.sql   # 演示数据（可选）
@@ -343,19 +343,17 @@ CozeController / DifyService
 
 ---
 
-## 🗄 数据库（23 张业务表）
+## 🗄 数据库（22 张业务表）
 
 ### 表关系（ER 图）
 
 ```mermaid
 erDiagram
     user ||--o{ user_address : "收货地址"
-    user ||--o{ cart_item : "加购(扁平表)"
-    user ||--o{ t_cart : "加购(新版表)"
+    user ||--o{ cart_item : "加购"
     user ||--o{ order : "下单"
     category ||--o{ product : "分类归属"
     product ||--o{ cart_item : "被加购"
-    product ||--o{ t_cart : "被加购"
     order ||--|{ order_item : "订单明细"
     product ||--o{ order_item : "被购买"
     order ||--o{ payment_transaction : "支付流水"
@@ -365,13 +363,13 @@ erDiagram
     sys_permission ||--o{ sys_role_permission : "权限项"
 ```
 
-> 注：`cart_item`（扁平项结构，兼容老版前端）与 `t_cart`（新版 Service 层用，支持逻辑删除）
-> 是**两套并存的购物车实现**，彼此无外键关系。订单同理存在两条链路：
-> `ClientOrderController`（客户端直购，前端实际调用）与 `OrderServiceImpl`（购物车结算，后台与定时任务用）。
+> 注：购物车统一使用 `cart_item` 表（扁平项结构）；客户端下单走 `ClientOrderController`
+> 直购链路（不经过购物车表），`OrderServiceImpl` 提供事务化订单写入（`saveOrderWithItems`）供其复用，
+> 并为管理后台与定时任务（超时关单）提供服务。
 
 ### 核心业务链
 ```
-User(用户) → Cart(购物车) + CartItem
+User(用户) → CartItem(购物车)
      ↓
 Order(订单) + OrderItem → PaymentTransaction(支付流水)
      ↓
@@ -386,7 +384,7 @@ SysAdmin → SysRole → SysRolePermission → SysPermission（权限树）
 ```
 
 ### 其他
-`Product / Category / Carousel / News / BusinessCooperation / Negotiation / Workshop / CustomerServiceRequest / ServiceRequestMessage / ServiceRequestReview / UserAddress / Cart / CartItem / PaymentTransaction`
+`Product / Category / Carousel / News / BusinessCooperation / Negotiation / Workshop / CustomerServiceRequest / ServiceRequestMessage / ServiceRequestReview / UserAddress / CartItem / PaymentTransaction`
 
 ---
 
@@ -414,7 +412,7 @@ green-chain-procurement/
 │   ├── config/              # Spring 配置：跨域/MyBatis-Plus/Redis/Knife4j/Dify/Security/WebMvc
 │   ├── controller/          # Controller 层（30+ 接口，Client / Admin 分包）
 │   ├── dto/                 # request 请求体 + response 视图对象（VO）
-│   ├── entity/              # MyBatis-Plus Entity（23 张表）
+│   ├── entity/              # MyBatis-Plus Entity（22 张表）
 │   ├── interceptor/         # 拦截器链：ClientAuth / AdminAuth / Permission / 订单限流
 │   ├── mapper/              # MyBatis-Plus BaseMapper + 自定义原子 SQL 方法
 │   ├── payment/             # 支付子包：策略接口 + Mock 实现 + 签名工具 + 配置
@@ -429,7 +427,7 @@ green-chain-procurement/
 ├── src/main/resources/
 │   ├── mapper/              # MyBatis XML 自定义 SQL
 │   ├── sql/                 # SQL 脚本：demo_init / product_seed / redis
-│   ├── schema.sql           # 数据库完整建表脚本（建库 + 23 张表 + 权限表种子数据）
+│   ├── schema.sql           # 数据库完整建表脚本（建库 + 22 张表 + 权限表种子数据）
 │   ├── neo4j-init.cypher    # Neo4j 工艺节点 & 关系初始化
 │   ├── application.yml      # Spring Boot 主配置（环境变量占位脱敏）
 │   └── application.example.yml # 配置模板

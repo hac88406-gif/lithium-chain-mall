@@ -28,7 +28,6 @@ DROP TABLE IF EXISTS payment_transaction;
 DROP TABLE IF EXISTS after_sale;
 DROP TABLE IF EXISTS order_item;
 DROP TABLE IF EXISTS cart_item;
-DROP TABLE IF EXISTS t_cart;
 DROP TABLE IF EXISTS user_address;
 DROP TABLE IF EXISTS `order`;
 DROP TABLE IF EXISTS sys_role_permission;
@@ -141,18 +140,6 @@ CREATE TABLE IF NOT EXISTS cart_item (
     INDEX idx_user_id (`user_id`),
     INDEX idx_product_id (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='购物车项表(扁平项结构，兼容老版前端)';
-
-CREATE TABLE IF NOT EXISTS t_cart (
-    `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '购物车主表ID(新版Service层用)',
-    `user_id` BIGINT NOT NULL COMMENT '用户ID',
-    `product_id` BIGINT NOT NULL COMMENT '商品ID',
-    `quantity` INT DEFAULT 1 COMMENT '数量',
-    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted` TINYINT DEFAULT 0 COMMENT '逻辑删除 0未删 1已删',
-    INDEX idx_user_id (`user_id`),
-    INDEX idx_product_id (`product_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='购物车主表(MyBatis-Plus逻辑删除支持)';
 
 CREATE TABLE IF NOT EXISTS `order` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
