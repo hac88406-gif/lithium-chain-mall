@@ -243,7 +243,11 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     /**
-     * 支付成功后累加商品销量并刷新热销榜（复刻原 ClientOrderController.payOrder 逻辑）。
+     * 支付成功后累加商品销量并刷新热销榜。
+     * <p>
+     * 注意：这是全项目<b>唯一</b>的销量累加入口。早期 {@code ClientOrderController.confirmReceive}
+     * 里还有一处累加，导致同一笔订单在"支付成功"和"确认收货"时各加一次、销量翻倍，现已删除那处。
+     * 口径统一为：**支付成功即计入销量**（同时刷新 Redis 热销榜），确认收货不再重复累加。
      */
     private void incrementSalesByOrderNo(String orderNo) {
         Order order = orderMapper.selectOne(new QueryWrapper<Order>().eq("order_no", orderNo).last("LIMIT 1"));

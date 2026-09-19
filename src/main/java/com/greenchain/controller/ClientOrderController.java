@@ -357,17 +357,11 @@ public class ClientOrderController {
             return result;
         }
 
-        // 销量 sales 原子累加：确保"每确认一笔仅加一次数量"，与上面的原子确认配套
-        // （未来若改为"支付成功即加销量"，把这里的代码移至 payIfPending/markPaidByOrderNo 成功分支即可）
-        try {
-            List<OrderItem> items = orderItemMapper.findByOrderId(id);
-            for (OrderItem item : items) {
-                productMapper.addSales(item.getProductId(), item.getQuantity());
-            }
-        } catch (Exception e) {
-            // 销量统计失败不影响确认收货主流程，仅记录错误
-            log.warn("确认收货：订单 {} 销量累加失败：{}", id, e.getMessage());
-        }
+        // 销量 sales 的累加不在这里做：统一在"支付成功"时累加一次
+        // （见 PaymentServiceImpl.handleNotify → incrementSalesByOrderNo，同时刷新 Redis 热销榜）。
+        // 早期这里与支付回调各累加一次，导致同一笔订单销量翻倍，已删除本段。
+
+        result.put("code", 200);
 
         result.put("code", 200);
         result.put("message", "已确认收货");
