@@ -483,7 +483,7 @@ green-chain-procurement/
 
 ---
 
-## 🧪 Postman 验证要点（面试官最常问）
+## 🧪 Postman 验证要点（主流程联调）
 
 **订单主流程（按序调用，路径与 Controller 实际 Mapping 一致）：**
 1. `POST /api/client/auth/register` 注册 → 2. `POST /api/client/auth/login` 获取 token → 3. `POST /api/client/cart` 加购 → 4. `POST /api/client/orders` 下单（拿 orderNo）→ 5. `POST /api/client/payment/create` 发起支付 → 6. `POST /api/client/payment/{paymentNo}/simulate-pay` 模拟支付成功 → 7. `GET /api/client/orders/{id}` 验证订单状态 paid → 8. `POST /api/client/afterSale/apply` 申请售后 → 9. `POST /api/admin/afterSale/review` 运营审核 → 10. 财务对账退款
