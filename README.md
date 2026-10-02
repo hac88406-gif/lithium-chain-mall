@@ -161,7 +161,7 @@
 
 ## 🚀 快速启动
 
-### 方式一：Docker Compose 一键部署（推荐给面试官 / 快速体验）
+### 方式一：Docker Compose 一键部署（推荐）
 
 > 需本机已安装 Docker Desktop 4.20+
 
