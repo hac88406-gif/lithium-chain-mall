@@ -12,11 +12,12 @@ import java.util.Map;
  * <p>提供与 Cypher 图查询语义等价的 MySQL 多表 JOIN 查询，
  * 用于 {@code GraphVsSqlBenchmark} 公平对比两种数据库的图遍历性能。
  *
- * <p><b>三个递进压测场景：</b>
+ * <p><b>四个递进压测场景：</b>
  * <ol>
  *   <li>单产品浅遍历（4 跳 JOIN，14 行结果）</li>
- *   <li>全产品批量遍历（7 表 JOIN + WHERE product_id IN (...)，2000+ 行结果）</li>
- *   <li>深度工序链递归（递归 CTE + 7 表 JOIN）</li>
+ *   <li>100 个 benchmark 产品批量遍历（同一 id 集合，两边对等）</li>
+ *   <li>深度工序链递归（递归 CTE + 多表 JOIN）</li>
+ *   <li>全量 benchmark 产品遍历（两边数据量严格对等）</li>
  * </ol>
  */
 @Mapper
@@ -72,8 +73,14 @@ public interface BenchmarkMapper {
      * MySQL 端要处理 graph_product 全表 JOIN product_process（56000+ 行），
      * Neo4j 端直接 MATCH 全图遍历。数据量越大差距越爆炸。
      *
-     * <p>注：此场景是"全量压力"模式，两边数据量不等（MySQL 有 4000+ 产品，
-     * Neo4j 有 1000+ 产品），重点看性能差距而非行数。
+     * <p>注：两边数据均按 category='benchmark' 过滤，规模严格对等；
+     * 实际行数由 {@link #countBenchmarkProducts()} 与 {@link #countProductProcess()} 实时统计。
      */
     List<Map<String, Object>> queryAllProductsFullChain();
+
+    /** 统计 benchmark 产品数（用于压测元信息，避免硬编码数字漂移） */
+    long countBenchmarkProducts();
+
+    /** 统计 benchmark 产品的工序关联行数（用于压测元信息） */
+    long countProductProcess();
 }

@@ -171,4 +171,18 @@
         ORDER BY gp.id, p.id
     </select>
 
+    <!-- ============================================================
+         数据规模统计：供压测元信息使用（避免硬编码数字与实际数据漂移）
+         ============================================================ -->
+    <select id="countBenchmarkProducts" resultType="long">
+        SELECT COUNT(*) FROM graph_product WHERE category = 'benchmark'
+    </select>
+
+    <select id="countProductProcess" resultType="long">
+        SELECT COUNT(*)
+        FROM product_process pp
+            JOIN graph_product gp ON gp.id = pp.product_id
+        WHERE gp.category = 'benchmark'
+    </select>
+
 </mapper>

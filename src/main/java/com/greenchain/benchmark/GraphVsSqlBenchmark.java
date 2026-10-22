@@ -17,14 +17,15 @@ import java.util.stream.Collectors;
 /**
  * Neo4j vs MySQL 图查询性能压测工具（多场景递进版）。
  *
- * <p><b>三个递进场景：</b>
+ * <p><b>四个递进场景（两边数据严格对等，均按 category='benchmark' 过滤）：</b>
  * <ol>
  *   <li><b>浅遍历（MySQL 占优）：</b>单产品 4 跳 OPTIONAL MATCH，结果 14 行，MySQL 全在内存里</li>
- *   <li><b>批量遍历（MySQL 开始吃力）：</b>100 个产品 × 7 表 JOIN，结果 1400 行</li>
- *   <li><b>深度递归（Neo4j 主场）：</b>从 P001 递归沿 NEXT_STEP 走到 P014，MySQL 必须用递归 CTE</li>
+ *   <li><b>批量遍历：</b>100 个 benchmark 产品，两边查询同一 id 集合</li>
+ *   <li><b>深度递归：</b>从 P001 递归沿 NEXT_STEP 走到 P014，MySQL 必须用递归 CTE</li>
+ *   <li><b>全量遍历：</b>全部 benchmark 产品，多表 JOIN vs 原生图遍历</li>
  * </ol>
  *
- * <p>使用方式：注入本组件，调用 {@link #runAllBenchmarks()} 即可获取三个场景的完整对比报告。
+ * <p>使用方式：注入本组件，调用 {@link #runAllBenchmarks()} 即可获取四个场景的完整对比报告。
  */
 @Slf4j
 @Component
@@ -128,14 +129,26 @@ public class GraphVsSqlBenchmark {
         Map<String, Object> fullReport = new LinkedHashMap<>();
         List<Map<String, Object>> scenarios = new ArrayList<>();
 
-        log.info("═══════════════════════════════════════════════════════════");
-        log.info("  Neo4j vs MySQL 四场景递进压测 开始");
-        log.info("  每场景预热 {} 次，正式执行 {} 次", WARMUP_ROUNDS, BENCHMARK_ROUNDS);
-        log.info("  MySQL 数据规模：product_process 56027 行，graph_product 4003 个");
-        log.info("═══════════════════════════════════════════════════════════");
+        long mysqlProducts = 0L;
+        long mysqlProcessRows = 0L;
+        long neo4jProducts = 0L;
+        long neo4jContains = 0L;
 
         try (Driver driver = GraphDatabase.driver(neo4jUri, AuthTokens.basic(neo4jUsername, neo4jPassword));
              Session session = driver.session()) {
+
+            // 数据规模实时统计（两边口径一致），避免硬编码数字与实际数据漂移
+            mysqlProducts = benchmarkMapper.countBenchmarkProducts();
+            mysqlProcessRows = benchmarkMapper.countProductProcess();
+            neo4jProducts = countNeo4j(session, "MATCH (pr:Product {category:'benchmark'}) RETURN count(pr)");
+            neo4jContains = countNeo4j(session, "MATCH (:Product {category:'benchmark'})-[:CONTAINS]->() RETURN count(*)");
+
+            log.info("═══════════════════════════════════════════════════════════");
+            log.info("  Neo4j vs MySQL 四场景递进压测 开始");
+            log.info("  每场景预热 {} 次，正式执行 {} 次", WARMUP_ROUNDS, BENCHMARK_ROUNDS);
+            log.info("  MySQL 数据规模：benchmark 产品 {} 个，product_process {} 行", mysqlProducts, mysqlProcessRows);
+            log.info("  Neo4j 数据规模：benchmark 产品 {} 个，CONTAINS 关系 {} 条", neo4jProducts, neo4jContains);
+            log.info("═══════════════════════════════════════════════════════════");
 
             // ====== 场景①：单产品 4 跳浅遍历 ======
             runScenario(scenarios, session, "场景①", "单产品 4跳浅遍历（14行，MySQL全内存）",
@@ -155,7 +168,8 @@ public class GraphVsSqlBenchmark {
 
             // ====== 场景④：全量 benchmark 4 跳遍历（重头戏！MySQL 8表JOIN扫42000行） ======
             runScenario(scenarios, session, "场景④",
-                    "全量benchmark产品 4跳遍历（MySQL扫3000产品×42000行 8表JOIN）",
+                    String.format("全量benchmark产品 4跳遍历（两边各 %d 个产品 / %d 行工序，多表 JOIN vs 图遍历）",
+                            mysqlProducts, mysqlProcessRows),
                     () -> benchmarkMapper.queryAllProductsFullChain(),
                     CYPHER_S4, new HashMap<>());
 
@@ -163,7 +177,7 @@ public class GraphVsSqlBenchmark {
             log.error("Neo4j 连接异常: {}", e.getMessage(), e);
         }
 
-        fullReport.put("meta", buildMeta());
+        fullReport.put("meta", buildMeta(mysqlProducts, mysqlProcessRows, neo4jProducts, neo4jContains));
         fullReport.put("scenarios", scenarios);
         printAllReports(scenarios);
 
@@ -256,11 +270,19 @@ public class GraphVsSqlBenchmark {
         return m;
     }
 
-    private Map<String, Object> buildMeta() {
+    /** 用 Neo4j 会话执行一次 count 查询（数据规模统计用） */
+    private long countNeo4j(Session session, String cypher) {
+        return session.run(cypher).single().get(0).asLong();
+    }
+
+    private Map<String, Object> buildMeta(long mysqlProducts, long mysqlProcessRows,
+                                          long neo4jProducts, long neo4jContains) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("benchmark", "Neo4j vs MySQL 多场景递进压测");
-        m.put("mysqlRows_product_process", 14027);
-        m.put("mysqlRows_graph_product", 1003);
+        m.put("mysqlBenchmarkProducts", mysqlProducts);
+        m.put("mysqlRows_product_process", mysqlProcessRows);
+        m.put("neo4jBenchmarkProducts", neo4jProducts);
+        m.put("neo4jRelations_CONTAINS", neo4jContains);
         m.put("warmupRounds", WARMUP_ROUNDS);
         m.put("benchmarkRounds", BENCHMARK_ROUNDS);
         m.put("timestamp", new Date().toString());
