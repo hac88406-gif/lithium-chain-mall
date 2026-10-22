@@ -1,0 +1,13 @@
+# ---------- 二进制资源：不做文本 diff，不计入 GitHub 语言统计 ----------
+*.glb    binary -linguist-detectable
+*.gltf   binary -linguist-detectable
+*.fbx    binary -linguist-detectable
+*.bin    binary -linguist-detectable
+*.png    binary -linguist-detectable
+*.jpg    binary -linguist-detectable
+*.jpeg   binary -linguist-detectable
+*.gif    binary -linguist-detectable
+*.ico    binary -linguist-detectable
+*.woff   binary -linguist-detectable
+*.woff2  binary -linguist-detectable
+*.ttf    binary -linguist-detectable

@@ -34,6 +34,15 @@ frontend/.vite/
 frontend/.DS_Store
 frontend/*.local
 
+# ---------- 前端大型静态资源（不入库） ----------
+# 3D 模型体积过大（Green-chain.glb 约 97MB），入库会让 clone 变得很慢，
+# 且单文件已逼近 GitHub 100MB 硬限制。需要时从网盘/局域网自行放置到
+# frontend/public/model/ 目录，前端代码按同名路径引用。
+frontend/public/model/*.glb
+frontend/public/model/*.gltf
+frontend/public/model/*.fbx
+frontend/public/model/*.bin
+
 # ---------- 日志 & 运行时临时文件 ----------
 *.log
 *.log.*
