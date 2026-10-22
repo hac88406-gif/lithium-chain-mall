@@ -35,6 +35,24 @@ public interface OrderMapper extends BaseMapper<Order> {
     int cancelIfPendingOrPaid(@Param("id") Long id, @Param("userId") Long userId);
 
     /**
+     * 原子系统关单（超时未支付自动取消）
+     * <p>
+     * 与用户取消的区别：系统取消没有 userId 上下文，只能按主键 + 状态做条件更新。
+     * 仅当状态仍为 pending 时才置为 cancelled，影响行数=1 才允许回补库存。
+     * <p>
+     * 解决的问题：原实现在服务层 selectById 判断状态后再 updateById，
+     * "用户手动取消"与"定时任务系统关单"并发时两边都能读到 pending，
+     * 导致状态被改两次、库存被回补两次（库存虚增）。改为条件 UPDATE 后，
+     * 数据库行级锁保证只有一方能拿到影响行数=1，另一方为 0 直接放弃回补。
+     *
+     * @param id 订单ID
+     * @return 影响行数：1-关单成功；0-订单不存在或状态已非 pending
+     */
+    @Update("UPDATE `order` SET status = 'cancelled', update_time = NOW() " +
+            "WHERE id = #{id} AND status = 'pending'")
+    int cancelIfPendingById(@Param("id") Long id);
+
+    /**
      * 原子支付订单（B4 顺手加固）
      * 仅当订单属于该用户且状态为 pending 时才置为 paid，
      * 防止并发/重复支付把已取消订单改回 paid。

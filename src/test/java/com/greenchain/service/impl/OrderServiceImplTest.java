@@ -65,7 +65,7 @@ class OrderServiceImplTest {
         }
 
         @Test
-        @DisplayName("正常取消待支付订单：更新状态 + 回补库存")
+        @DisplayName("正常取消待支付订单：条件更新状态 + 回补库存")
         void should_cancel_pending_order_and_restore_stock() {
             // given：模拟一个待支付订单 + 两条明细
             OrderItem item1 = new OrderItem();
@@ -77,6 +77,8 @@ class OrderServiceImplTest {
             List<OrderItem> items = List.of(item1, item2);
 
             when(orderMapper.selectById(1001L)).thenReturn(pendingOrder);
+            // 条件 UPDATE 影响行数=1：本次调用抢到了状态流转
+            when(orderMapper.cancelIfPendingById(1001L)).thenReturn(1);
             when(orderItemMapper.selectList(any())).thenReturn(items);
             // restoreStock 返回 1 表示原子回补成功
             when(productMapper.restoreStock(10L, 2)).thenReturn(1);
@@ -85,13 +87,28 @@ class OrderServiceImplTest {
             // when
             orderService.cancelBySystem(1001L, "超时未支付自动关单");
 
-            // then：状态被更新为 cancelled
-            verify(orderMapper, times(1)).updateById(argThat(order ->
-                    "cancelled".equals(order.getStatus()) && order.getId() == 1001L));
+            // then：状态走的是条件 UPDATE，不再用"先查后改"的 updateById
+            verify(orderMapper, times(1)).cancelIfPendingById(1001L);
+            verify(orderMapper, never()).updateById(any());
 
             // 两条明细的库存都被回补
             verify(productMapper, times(1)).restoreStock(10L, 2);
             verify(productMapper, times(1)).restoreStock(20L, 1);
+        }
+
+        @Test
+        @DisplayName("并发下状态已被改：条件更新影响行数=0，不回补库存（防库存虚增）")
+        void should_not_restore_stock_when_conditional_update_affected_zero_rows() {
+            // given：服务层读到的是 pending，但在条件 UPDATE 之前订单已被用户手动取消
+            when(orderMapper.selectById(1001L)).thenReturn(pendingOrder);
+            when(orderMapper.cancelIfPendingById(1001L)).thenReturn(0);
+
+            // when
+            orderService.cancelBySystem(1001L, "超时未支付自动关单");
+
+            // then：没有抢到状态流转，明细不查、库存不回补
+            verify(orderItemMapper, never()).selectList(any());
+            verify(productMapper, never()).restoreStock(anyLong(), anyInt());
         }
 
         @Test
@@ -103,8 +120,8 @@ class OrderServiceImplTest {
             // when：不能抛异常，正常返回
             orderService.cancelBySystem(9999L, "任何原因");
 
-            // then：不会调 updateById，不会查订单明细，不会回补库存
-            verify(orderMapper, never()).updateById(any());
+            // then：不会调状态更新，不会查订单明细，不会回补库存
+            verify(orderMapper, never()).cancelIfPendingById(anyLong());
             verify(orderItemMapper, never()).selectList(any());
             verify(productMapper, never()).restoreStock(anyLong(), anyInt());
         }
@@ -123,7 +140,7 @@ class OrderServiceImplTest {
             orderService.cancelBySystem(1002L, "超时未支付");
 
             // then：不会触发取消逻辑
-            verify(orderMapper, never()).updateById(any());
+            verify(orderMapper, never()).cancelIfPendingById(anyLong());
             verify(productMapper, never()).restoreStock(anyLong(), anyInt());
         }
 
@@ -141,7 +158,7 @@ class OrderServiceImplTest {
             orderService.cancelBySystem(1003L, "重复关单不应报错");
 
             // then
-            verify(orderMapper, never()).updateById(any());
+            verify(orderMapper, never()).cancelIfPendingById(anyLong());
         }
 
         @Test
@@ -149,13 +166,14 @@ class OrderServiceImplTest {
         void should_cancel_without_restoring_when_no_items() {
             // given
             when(orderMapper.selectById(1001L)).thenReturn(pendingOrder);
+            when(orderMapper.cancelIfPendingById(1001L)).thenReturn(1);
             when(orderItemMapper.selectList(any())).thenReturn(new ArrayList<>());
 
             // when
             orderService.cancelBySystem(1001L, "超时未支付");
 
             // then：状态更新了但没调 restoreStock
-            verify(orderMapper, times(1)).updateById(any());
+            verify(orderMapper, times(1)).cancelIfPendingById(1001L);
             verify(productMapper, never()).restoreStock(anyLong(), anyInt());
         }
     }

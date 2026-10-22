@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,7 +27,8 @@ import java.util.List;
  * 注意：客户端下单统一走 ClientOrderController（直购链路，小写状态值 pending/cancelled）；
  * 本类提供 saveOrderWithItems 供其复用事务化写入（先主表后明细，异常整体回滚），
  * 同时为管理后台（listAll / getById）与定时任务（cancelBySystem 超时关单）提供服务。
- * 库存回补统一使用 ProductMapper.restoreStock 原子方法（条件 UPDATE，防并发回补过量）。
+ * 库存回补统一使用 ProductMapper.restoreStock 原子加法；
+ * 但"是否允许回补"由 OrderMapper 的条件 UPDATE 决定，避免并发重复回补。
  */
 @Slf4j
 @Service
@@ -63,8 +63,10 @@ public class OrderServiceImpl implements OrderService {
             log.warn("系统取消失败：订单不存在，orderId={}", orderId);
             return;
         }
-        // 系统取消：仅允许取消"待支付"状态订单（超时未支付自动关单）
-        // 已取消/已支付/已发货/已完成 等非待支付状态直接跳过（幂等）
+        // 快速路径：非"待支付"状态直接跳过，避免无谓的明细查询与日志噪音。
+        // 注意：这里只是性能优化，不能当作并发正确性的保证——
+        //       真正的幂等由 doCancelOrder 里的条件 UPDATE（WHERE status='pending'）兜住，
+        //       因为本次查询之后状态仍可能被用户手动取消改掉。
         if (!"pending".equals(order.getStatus())) {
             log.warn("系统取消跳过：订单 {} 状态为 {}，非待支付，无需关单",
                     order.getOrderNo(), order.getStatus());
@@ -74,23 +76,34 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * 共享的订单取消私有方法：更新状态 + 原子回补库存
+     * 共享的订单取消私有方法：条件更新状态 + 原子回补库存
      * <p>
      * 系统取消（cancelBySystem）及未来的取消场景共用本方法，
-     * 取消前的状态校验和归属校验由调用方负责。
+     * 取消前的归属校验由调用方负责，但<b>状态流转一律由本方法的条件 UPDATE 决定</b>。
      * <p>
-     * 库存回补使用 ProductMapper.restoreStock 原子方法（条件 UPDATE：stock + quantity），
-     * 比 setStock 非原子操作更严谨，并发下不会回补过量。
+     * 两步顺序不能反：
+     * <ol>
+     *   <li><b>先</b>原子地把 pending 改成 cancelled（{@code WHERE id = ? AND status = 'pending'}），
+     *       影响行数=1 才说明本次调用真正完成了关单；</li>
+     *   <li><b>再</b>回补库存（{@code stock = stock + n}，原子加法）。</li>
+     * </ol>
+     * 如果先回补再改状态，或沿用"先查状态再 updateById"，用户手动取消与定时任务并发时
+     * 两边都能通过状态判断，库存会被回补两次（虚增）。条件 UPDATE 把"判断 + 修改"合成
+     * 一条语句，由数据库行级锁保证只有一方返回 1，从根上避免重复回补。
      *
-     * @param order  待取消订单（必须已查好并满足取消前置条件）
+     * @param order  待取消订单（必须已查好，至少要保证 id 与 orderNo 存在）
      * @param reason 取消原因（仅用于日志记录，Order 实体无 cancelReason 字段不写入数据库）
      */
     private void doCancelOrder(Order order, String reason) {
-        order.setStatus("cancelled");
-        order.setUpdateTime(LocalDateTime.now());
-        orderMapper.updateById(order);
+        // ① 条件更新：只有抢到这次状态流转的调用才允许回补库存
+        int rows = orderMapper.cancelIfPendingById(order.getId());
+        if (rows == 0) {
+            // 已被用户手动取消 / 已被其他实例关单 / 已支付 —— 放弃回补，直接返回
+            log.warn("系统取消跳过：订单 {} 状态已变更，本次不回补库存", order.getOrderNo());
+            return;
+        }
 
-        // 原子回补库存（restoreStock 是条件 UPDATE 原子操作，防并发回补过量）
+        // ② 原子回补库存（stock = stock + quantity），只在状态流转成功后执行
         LambdaQueryWrapper<OrderItem> itemWrapper = new LambdaQueryWrapper<>();
         itemWrapper.eq(OrderItem::getOrderId, order.getId());
         List<OrderItem> items = orderItemMapper.selectList(itemWrapper);
