@@ -48,7 +48,7 @@ public class MockPaymentChannel implements PaymentChannel {
 
         // 构造拉起支付时需要回传给客户端、并在回调时参与签名的参数
         Map<String, String> signParams = new LinkedHashMap<>();
-        signParams.put("mch_id", "10000001");                    // 模拟商户号
+        signParams.put("mch_id", properties.getMchId());        // 商户号（参与签名）
         signParams.put("out_trade_no", req.getOrderNo());        // 订单号
         signParams.put("payment_no", req.getPaymentNo());        // 平台支付流水号(幂等)
         signParams.put("transaction_id", transactionId);        // 平台交易号
@@ -72,11 +72,19 @@ public class MockPaymentChannel implements PaymentChannel {
         if (params == null || params.isEmpty()) {
             return NotifyParseResult.invalid("回调参数为空");
         }
-        // 核心：验签。仅当签名与本地按同样规则计算的结果一致才视为可信回调。
+        // 第一步：验签。仅当签名与本地按同样规则计算的结果一致才视为可信回调。
         boolean ok = PaySignature.verify(params, sign, properties.getMockSecretKey());
         if (!ok) {
             return NotifyParseResult.invalid("回调签名校验失败");
         }
+        // 第二步：商户号校验。验签只能证明"对方持有密钥"，不能证明"这笔回调是发给本商户的"
+        // （同一网关下多商户共用密钥、或回调被重放到另一个商户时，签名依然合法）。
+        String mchId = params.get("mch_id");
+        if (mchId == null || !mchId.equals(properties.getMchId())) {
+            return NotifyParseResult.invalid("回调商户号不匹配: " + mchId);
+        }
+        // 说明：金额、订单号与本地流水是否一致，通道层无从判断（它不知道订单金额），
+        //       由 PaymentServiceImpl.handleNotify 拿到流水后逐项比对。
         String paymentNo = params.get("payment_no");
         String orderNo = params.get("out_trade_no");
         String transactionId = params.get("transaction_id");

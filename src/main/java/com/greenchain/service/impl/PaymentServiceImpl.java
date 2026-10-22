@@ -33,7 +33,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 支付服务实现：完整编排支付生命周期（预下单 → 回调验签 → 幂等 → 订单状态机 → 退款）。
+ * 支付服务实现：完整编排支付生命周期（预下单 → 回调验签 → 商户/金额一致性校验 → 幂等 → 订单状态机 → 退款）。
  * <p>
  * 策略模式注入所有 {@link PaymentChannel}，按配置的 default-channel 选择当前通道（mock），
  * 未来接微信/支付宝只需新增实现并改配置，本类无需改动。
@@ -111,7 +111,7 @@ public class PaymentServiceImpl implements PaymentService {
         return toVO(tx);
     }
 
-    // ==================== 异步回调（验签 + 幂等 + 订单状态机） ====================
+    // ==================== 异步回调（验签 + 商户/金额一致性 + 幂等 + 订单状态机） ====================
 
     @Override
     @Transactional
@@ -125,7 +125,31 @@ public class PaymentServiceImpl implements PaymentService {
             return "FAIL";
         }
 
-        // 2. 幂等核心：把"预下单 created → success"只有一个请求能成功。
+        // 2. 一致性校验（防串单 / 防改价）：验签只能证明"回调来自网关"，
+        //    不能证明"响应体里的金额和订单号没被换过"。因此拿回调三要素与本地流水逐项比对：
+        //    流水必须存在、订单号必须对得上、金额必须分毫不差。
+        //    任一不符一律返回 FAIL —— 宁可让网关重试或人工核对，也不能按错误金额改单。
+        PaymentTransaction tx = paymentTransactionMapper.selectOne(new QueryWrapper<PaymentTransaction>()
+                .eq("payment_no", parsed.getPaymentNo())
+                .eq("type", PaymentTransaction.TYPE_PAYMENT)
+                .last("LIMIT 1"));
+        if (tx == null) {
+            log.warn("支付回调拒绝：本地流水不存在 paymentNo={}", parsed.getPaymentNo());
+            return "FAIL";
+        }
+        if (!parsed.getOrderNo().equals(tx.getOrderNo())) {
+            log.warn("支付回调拒绝：订单号不一致 paymentNo={}，回调={}，本地={}",
+                    parsed.getPaymentNo(), parsed.getOrderNo(), tx.getOrderNo());
+            return "FAIL";
+        }
+        if (parsed.getAmount() == null || tx.getAmount() == null
+                || parsed.getAmount().compareTo(tx.getAmount()) != 0) {
+            log.warn("支付回调拒绝：金额不一致 paymentNo={}，回调={}，本地={}",
+                    parsed.getPaymentNo(), parsed.getAmount(), tx.getAmount());
+            return "FAIL";
+        }
+
+        // 3. 幂等核心：把"预下单 created → success"只有一个请求能成功。
         //    重复/并发回调时受影响行数为 0，说明已处理过，直接回执成功避免重复扣减。
         int rows = paymentTransactionMapper.markPaySuccess(parsed.getPaymentNo(), parsed.getTransactionId());
         if (rows == 0) {
@@ -133,14 +157,14 @@ public class PaymentServiceImpl implements PaymentService {
             return "SUCCESS";
         }
 
-        // 3. 原子更新订单 pending → paid（按订单号，防把已取消订单改回已付款）
+        // 4. 原子更新订单 pending → paid（按订单号，防把已取消订单改回已付款）
         int orderRows = orderMapper.markPaidByOrderNo(parsed.getOrderNo());
         if (orderRows == 0) {
             log.warn("支付回调成功但订单状态非可支付，可能存在状态异常 orderNo={}", parsed.getOrderNo());
             return "SUCCESS";
         }
 
-        // 4. 累加商品销量 + 更新 Redis 热销榜（复用既有逻辑，失败不阻断主流程）
+        // 5. 累加商品销量 + 更新 Redis 热销榜（复用既有逻辑，失败不阻断主流程）
         incrementSalesByOrderNo(parsed.getOrderNo());
 
         log.info("支付回调成功 paymentNo={} orderNo={} amount={}",
@@ -202,9 +226,9 @@ public class PaymentServiceImpl implements PaymentService {
         if (tx == null) {
             throw new BusinessException(404, "支付流水不存在");
         }
-        // 构造与预下单签名规则完全一致的合法回调参数
+        // 构造与预下单签名规则完全一致的合法回调参数（商户号同样从配置取，保证两边同源）
         Map<String, String> params = new LinkedHashMap<>();
-        params.put("mch_id", "10000001");
+        params.put("mch_id", properties.getMchId());
         params.put("out_trade_no", tx.getOrderNo());
         params.put("payment_no", tx.getPaymentNo());
         params.put("transaction_id", tx.getTransactionId());
